@@ -1,18 +1,62 @@
 #include <Arduino.h>
+#include "config.h"
+#include "inputs.h"
+#include "power_led_tracker.h"
+#include "hdd_activity.h"
+#include "pc_state.h"
+#include "effect_controller.h"
+#include "led_output.h"
+#include "serial_debug.h"
 
-// put function declarations here:
-int myFunction(int, int);
+Inputs inputs;
+PowerLedTracker powerLed;
+HddActivity hdd;
+PcStateMachine pc({Config::PowerHoldForcedMs, Config::StartingTimeoutMs});
+EffectController effects;
+LedOutput ledOutput;
+SerialDebug debug;
+uint32_t lastFrameMs = 0;
+volatile uint8_t hddEdgeCounter = 0;
+
+void hddEdgeIsr() {
+  if (hddEdgeCounter < 255) ++hddEdgeCounter;
+}
+
+uint8_t consumeHddEdges() {
+  noInterrupts();
+  const uint8_t count = hddEdgeCounter;
+  hddEdgeCounter = 0;
+  interrupts();
+  return count;
+}
 
 void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+  inputs.begin();
+  attachInterrupt(digitalPinToInterrupt(Config::HddLedPin), hddEdgeIsr, CHANGE);
+  ledOutput.begin();
+  debug.begin();
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-}
+  const uint32_t now = millis();
+  inputs.update(now);
+  const NormalizedInputs &in = inputs.state();
+  powerLed.update(in.powerLed, now);
+  const PowerLedMode powerMode = powerLed.mode(now);
+  hdd.update(in.hddLed, consumeHddEdges());
 
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+  const PcStateInputs pcInputs = {in.stripPowerPresent, in.powerButton, inputs.powerButtonPressed(), inputs.powerButtonReleased(), inputs.resetButtonPressed(), powerMode, effects.consumeFinished()};
+  const PcStateEvents pcEvents = pc.update(pcInputs, now);
+  if (pcEvents.cancelStartupRequested) effects.cancel(TransitionEffect::Startup);
+  if ((pcEvents.startupRequested || (pc.state() == PcState::Starting && in.stripPowerPresent && !effects.active()))) effects.request(TransitionEffect::Startup, now);
+  if (pcEvents.shutdownRequested) effects.request(TransitionEffect::Shutdown, now);
+  if (pcEvents.resetRequested) effects.request(TransitionEffect::Reset, now);
+  if (pcEvents.forcedShutdownRequested) effects.request(TransitionEffect::ForcedShutdown, pc.powerHoldStartMs());
+  effects.update(now);
+
+  if (now - lastFrameMs >= Config::FrameIntervalMs) {
+    lastFrameMs = now;
+    ledOutput.render(pc.state(), effects.current(), effects.startedAt(), hdd.value(), in.stripPowerPresent, now);
+  }
+  debug.update(in, pc.state(), effects.current(), powerMode, hdd.value(), now);
 }
