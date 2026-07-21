@@ -92,9 +92,12 @@ PcStateEvents PcStateMachine::update(const PcStateInputs &inputs, uint32_t nowMs
       }
 
       if (trackingHold_ && inputs.powerButtonReleased) {
+        const bool heldLongEnough =
+            forcedLatched_ || nowMs - powerHoldStartMs_ >= config_.forcedHoldMs;
         trackingHold_ = false;
+        forcedLatched_ = heldLongEnough;
         state_ = PcState::ShuttingDown;
-        if (!forcedLatched_) {
+        if (!heldLongEnough) {
           events.cancelForcedShutdown = true;
           events.requestShutdown = true;
         }

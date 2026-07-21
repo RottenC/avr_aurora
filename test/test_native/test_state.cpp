@@ -159,6 +159,20 @@ void test_forced_hold_latches_and_release_uses_no_normal_shutdown() {
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PcState::ShuttingDown), static_cast<uint8_t>(pc.state()));
 }
 
+void test_release_at_forced_threshold_latches_without_intermediate_update() {
+  PcStateMachine pc = makePcStateMachine();
+  reconcileToRunning(pc);
+  beginPowerHold(pc, 100);
+
+  PcStateInputs inputs = makeInputs(PowerLedMode::On);
+  inputs.powerButtonReleased = true;
+  const PcStateEvents events = pc.update(inputs, 100 + Config::PowerHoldForcedMs);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PcState::ShuttingDown), static_cast<uint8_t>(pc.state()));
+  TEST_ASSERT_TRUE(pc.forcedLatched());
+  TEST_ASSERT_FALSE(events.requestShutdown);
+  TEST_ASSERT_FALSE(events.cancelForcedShutdown);
+}
+
 void test_power_mode_reconciliation_does_not_interrupt_hold() {
   PcStateMachine pc = makePcStateMachine();
   reconcileToRunning(pc);
@@ -283,6 +297,7 @@ int main(int, char **) {
   RUN_TEST(test_startup_times_out_or_reconciles_to_sleep);
   RUN_TEST(test_short_power_press_cancels_preview_and_starts_shutdown);
   RUN_TEST(test_forced_hold_latches_and_release_uses_no_normal_shutdown);
+  RUN_TEST(test_release_at_forced_threshold_latches_without_intermediate_update);
   RUN_TEST(test_power_mode_reconciliation_does_not_interrupt_hold);
   RUN_TEST(test_sleep_wake_and_shutdown_completion_reconcile_continuously);
   RUN_TEST(test_transition_priority_restart_and_completion);
