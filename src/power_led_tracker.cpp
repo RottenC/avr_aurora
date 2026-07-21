@@ -7,6 +7,7 @@ void PowerLedTracker::update(bool active, uint32_t nowMs) {
     const uint32_t interval = nowMs - lastChangeMs_;
     if (interval >= Config::PowerLedBlinkMinHalfPeriodMs && interval <= Config::PowerLedBlinkMaxHalfPeriodMs) {
       if (blinkEdges_ < Config::PowerLedBlinkEdgesRequired) ++blinkEdges_;
+      lastValidBlinkEdgeMs_ = nowMs;
     } else {
       blinkEdges_ = 0;
     }
@@ -14,8 +15,12 @@ void PowerLedTracker::update(bool active, uint32_t nowMs) {
     lastChangeMs_ = nowMs;
   }
 }
+
 PowerLedMode PowerLedTracker::mode(uint32_t nowMs) const {
-  if (blinkEdges_ >= Config::PowerLedBlinkEdgesRequired) return PowerLedMode::Blinking;
+  if (blinkEdges_ >= Config::PowerLedBlinkEdgesRequired &&
+      nowMs - lastValidBlinkEdgeMs_ <= Config::PowerLedBlinkStaleMs) {
+    return PowerLedMode::Blinking;
+  }
   if (last_) return PowerLedMode::On;
   return (nowMs - lastOnMs_ < Config::ShortPowerLedOffIgnoreMs) ? PowerLedMode::On : PowerLedMode::Off;
 }
