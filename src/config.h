@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
-#include <FastLED.h>
+#include "fastled_compat.h"
 
 namespace Config {
 constexpr uint8_t LedDataPin = 6;
