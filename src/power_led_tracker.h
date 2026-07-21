@@ -11,5 +11,6 @@ private:
   bool last_=false;
   uint32_t lastChangeMs_=0;
   uint32_t lastOnMs_=0;
+  uint32_t lastValidBlinkEdgeMs_=0;
   uint8_t blinkEdges_=0;
 };
