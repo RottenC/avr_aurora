@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
-#include <FastLED.h>
+#include "fastled_compat.h"
 #include "config_values.h"
 
 namespace Config {
@@ -18,8 +18,8 @@ constexpr uint8_t ResetButtonPin = 5;
 constexpr uint8_t StripPowerPresentPin = 7;
 constexpr uint8_t DebugButtonPin = 8;
 
-constexpr bool PowerLedActiveHigh = true;
-constexpr bool HddLedActiveHigh = true;
+constexpr bool PowerLedActiveHigh = false;
+constexpr bool HddLedActiveHigh = false;
 constexpr bool PowerButtonActiveHigh = false;
 constexpr bool ResetButtonActiveHigh = false;
 constexpr bool StripPowerPresentActiveHigh = true;
@@ -28,11 +28,13 @@ constexpr bool DebugButtonActiveHigh = false;
 constexpr uint32_t InputPollMs = 5;
 constexpr uint16_t DebounceMs = 25;
 constexpr uint32_t FrameIntervalMs = 20;
+constexpr uint32_t HddUpdateMs = FirmwareConfig::HddUpdateMs;
 constexpr uint32_t SerialBaud = 115200;
 constexpr uint32_t DebugSnapshotIntervalMs = 5000;
 constexpr uint32_t ShortPowerLedOffIgnoreMs = FirmwareConfig::ShortPowerLedOffIgnoreMs;
 constexpr uint32_t PowerLedBlinkMinHalfPeriodMs = FirmwareConfig::PowerLedBlinkMinHalfPeriodMs;
 constexpr uint32_t PowerLedBlinkMaxHalfPeriodMs = FirmwareConfig::PowerLedBlinkMaxHalfPeriodMs;
+constexpr uint32_t PowerLedBlinkStaleMs = FirmwareConfig::PowerLedBlinkStaleMs;
 constexpr uint8_t PowerLedBlinkEdgesRequired = FirmwareConfig::PowerLedBlinkEdgesRequired;
 constexpr uint32_t PowerHoldForcedMs = FirmwareConfig::PowerHoldForcedMs;
 constexpr uint32_t ForcedFlashAtMs = FirmwareConfig::ForcedFlashAtMs;

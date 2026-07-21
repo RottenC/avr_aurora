@@ -16,7 +16,7 @@ void PowerLedTracker::update(bool active, uint32_t nowMs) {
 }
 
 PowerLedMode PowerLedTracker::mode(uint32_t nowMs) const {
-  if (blinkEdges_ >= FirmwareConfig::PowerLedBlinkEdgesRequired) return PowerLedMode::Blinking;
+  if (blinkEdges_ >= FirmwareConfig::PowerLedBlinkEdgesRequired && nowMs - lastChangeMs_ <= FirmwareConfig::PowerLedBlinkStaleMs) return PowerLedMode::Blinking;
   if (last_) return PowerLedMode::On;
   return (nowMs - lastOnMs_ < FirmwareConfig::ShortPowerLedOffIgnoreMs) ? PowerLedMode::On : PowerLedMode::Off;
 }

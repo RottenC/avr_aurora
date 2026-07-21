@@ -5,7 +5,7 @@
 
 class HddActivity {
 public:
-  void update(bool active, uint8_t edgeCount);
+  void update(bool active, uint8_t edgeCount, uint16_t elapsedMs);
   uint8_t value() const { return value_; }
 private:
   bool last_ = false;

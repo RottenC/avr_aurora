@@ -7,6 +7,7 @@
 class EffectController {
 public:
   void request(TransitionEffect effect, uint32_t nowMs);
+  void restart(TransitionEffect effect, uint32_t nowMs);
   void cancel(TransitionEffect effect);
   void cancel();
   void update(uint32_t nowMs);

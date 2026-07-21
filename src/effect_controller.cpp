@@ -26,7 +26,13 @@ uint32_t EffectController::duration(TransitionEffect effect) const {
 void EffectController::request(TransitionEffect effect, uint32_t nowMs) {
   if (effect == TransitionEffect::None) { cancel(); return; }
   if (current_ != TransitionEffect::None && priority(effect) < priority(current_)) return;
-  if (current_ == effect && effect == TransitionEffect::ForcedShutdown) return;
+  if (current_ == effect) return;
+  restart(effect, nowMs);
+}
+
+void EffectController::restart(TransitionEffect effect, uint32_t nowMs) {
+  if (effect == TransitionEffect::None) { cancel(); return; }
+  if (current_ != TransitionEffect::None && priority(effect) < priority(current_)) return;
   current_ = effect;
   startedAt_ = nowMs;
   finished_ = false;

@@ -24,6 +24,7 @@ struct PcStateEvents {
   bool shutdownRequested;
   bool resetRequested;
   bool forcedShutdownRequested;
+  bool forcedShutdownCancelRequested;
   bool cancelStartupRequested;
 };
 
@@ -34,6 +35,9 @@ public:
   PcState state() const { return state_; }
   bool forcedLatched() const { return forcedLatched_; }
   uint32_t powerHoldStartMs() const { return powerHoldStartMs_; }
+  bool startupAnimationFinished() const { return startupAnimationFinished_; }
+  bool startupEffectRequested() const { return startupEffectRequested_; }
+  bool startupWaitingForStripPower() const { return startupWaitingForStripPower_; }
 private:
   void enterStarting(PcStateEvents &events, uint32_t nowMs, bool stripPowerPresent);
   PcStateConfig config_;
@@ -42,4 +46,7 @@ private:
   uint32_t startingSinceMs_ = 0;
   bool trackingHold_ = false;
   bool forcedLatched_ = false;
+  bool startupAnimationFinished_ = false;
+  bool startupEffectRequested_ = false;
+  bool startupWaitingForStripPower_ = false;
 };
