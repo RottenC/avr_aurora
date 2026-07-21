@@ -9,10 +9,20 @@
 #include "serial_debug.h"
 
 Inputs inputs;
-PowerLedTracker powerLed;
-HddActivity hdd;
-PcStateMachine pc;
-EffectController effects;
+PowerLedTracker powerLed({Config::ShortPowerLedOffIgnoreMs,
+                         Config::PowerLedBlinkMinHalfPeriodMs,
+                         Config::PowerLedBlinkMaxHalfPeriodMs,
+                         Config::PowerLedBlinkStaleMs,
+                         Config::PowerLedBlinkEdgesRequired});
+HddActivity hdd({Config::HddUpdateMs,
+                 Config::HddEdgeBoost,
+                 Config::HddActiveRise,
+                 Config::HddInactiveDecay,
+                 Config::HddMax});
+PcStateMachine pc({Config::PowerHoldForcedMs, Config::StartingTimeoutMs});
+EffectController effects({Config::StartupDurationMs,
+                          Config::ShutdownDurationMs,
+                          Config::ResetDurationMs});
 LedOutput ledOutput;
 SerialDebug debug;
 uint32_t lastFrameMs = 0;
@@ -36,25 +46,30 @@ void loop() {
   if (now - lastHddUpdateMs >= Config::HddUpdateMs) {
     const uint16_t elapsed = static_cast<uint16_t>(now - lastHddUpdateMs);
     lastHddUpdateMs = now;
-    hdd.update(in.hddLed, inputs.consumeHddEdge(), elapsed);
+    hdd.update(in.hddLed, inputs.consumeHddEdges(), elapsed);
   }
 
-  pc.update(in, inputs.powerButtonPressed(), inputs.powerButtonReleased(), inputs.resetButtonPressed(), powerMode, now);
+  effects.update(now);
+  const TransitionEffect finishedEffect = effects.consumeFinished();
+  const PcStateInputs pcInputs = {
+      in.stripPowerPresent,
+      in.powerButton,
+      inputs.powerButtonPressed(),
+      inputs.powerButtonReleased(),
+      inputs.resetButtonPressed(),
+      powerMode,
+      finishedEffect == TransitionEffect::Startup};
+  const PcStateEvents events = pc.update(pcInputs, now);
 
-  if ((pc.startupRequested() || (pc.state() == PcState::Starting && !effects.active())) && in.stripPowerPresent) {
-    effects.request(TransitionEffect::Startup, now);
-  }
-  if (pc.holdPreviewRequested()) {
+  if (events.cancelStartup) effects.cancel(TransitionEffect::Startup);
+  if (events.cancelForcedShutdown) effects.cancel(TransitionEffect::ForcedShutdown);
+  if (events.requestStartup) effects.restart(TransitionEffect::Startup, now);
+  if (events.requestShutdown) effects.request(TransitionEffect::Shutdown, now);
+  if (events.requestReset) effects.request(TransitionEffect::Reset, now);
+  if (events.requestForcedShutdown) {
     effects.request(TransitionEffect::ForcedShutdown, pc.powerHoldStartMs());
   }
-  if (pc.shutdownRequested()) {
-    effects.request(TransitionEffect::Shutdown, now);
-  }
-  if (pc.resetRequested()) {
-    effects.request(TransitionEffect::Reset, now);
-  }
-
-  effects.update(pc, in.stripPowerPresent, now);
+  effects.reconcile(pc.state());
 
   if (now - lastFrameMs >= Config::FrameIntervalMs) {
     lastFrameMs = now;

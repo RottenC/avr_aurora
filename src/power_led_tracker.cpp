@@ -1,12 +1,25 @@
 #include "power_led_tracker.h"
-#include "config.h"
 
 void PowerLedTracker::update(bool active, uint32_t nowMs) {
-  if (active) lastOnMs_ = nowMs;
+  if (!initialized_) {
+    initialized_ = true;
+    last_ = active;
+    lastChangeMs_ = nowMs;
+    if (active) {
+      seenOn_ = true;
+      lastOnMs_ = nowMs;
+    }
+    return;
+  }
+
+  if (active) {
+    seenOn_ = true;
+    lastOnMs_ = nowMs;
+  }
   if (active != last_) {
     const uint32_t interval = nowMs - lastChangeMs_;
-    if (interval >= Config::PowerLedBlinkMinHalfPeriodMs && interval <= Config::PowerLedBlinkMaxHalfPeriodMs) {
-      if (blinkEdges_ < Config::PowerLedBlinkEdgesRequired) ++blinkEdges_;
+    if (interval >= config_.blinkMinHalfPeriodMs && interval <= config_.blinkMaxHalfPeriodMs) {
+      if (blinkEdges_ < config_.blinkEdgesRequired) ++blinkEdges_;
       lastValidBlinkEdgeMs_ = nowMs;
     } else {
       blinkEdges_ = 0;
@@ -17,10 +30,10 @@ void PowerLedTracker::update(bool active, uint32_t nowMs) {
 }
 
 PowerLedMode PowerLedTracker::mode(uint32_t nowMs) const {
-  if (blinkEdges_ >= Config::PowerLedBlinkEdgesRequired &&
-      nowMs - lastValidBlinkEdgeMs_ <= Config::PowerLedBlinkStaleMs) {
+  if (blinkEdges_ >= config_.blinkEdgesRequired &&
+      nowMs - lastValidBlinkEdgeMs_ <= config_.blinkStaleMs) {
     return PowerLedMode::Blinking;
   }
   if (last_) return PowerLedMode::On;
-  return (nowMs - lastOnMs_ < Config::ShortPowerLedOffIgnoreMs) ? PowerLedMode::On : PowerLedMode::Off;
+  return seenOn_ && nowMs - lastOnMs_ < config_.shortOffIgnoreMs ? PowerLedMode::On : PowerLedMode::Off;
 }

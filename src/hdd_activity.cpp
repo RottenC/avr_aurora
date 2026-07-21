@@ -1,14 +1,13 @@
 #include "hdd_activity.h"
-#include "config.h"
 
-void HddActivity::update(bool active, bool edgeSeen, uint16_t elapsedMs) {
+void HddActivity::update(bool active, uint8_t edgeCount, uint16_t elapsedMs) {
   uint16_t next = value_;
-  if (edgeSeen) next += Config::HddEdgeBoost;
+  next += static_cast<uint16_t>(edgeCount) * config_.edgeBoost;
 
-  const uint16_t ticks = elapsedMs / Config::HddUpdateMs;
-  const uint16_t delta = ticks * (active ? Config::HddActiveRise : Config::HddInactiveDecay);
+  const uint16_t ticks = elapsedMs / config_.updateMs;
+  const uint16_t delta = ticks * (active ? config_.activeRise : config_.inactiveDecay);
   if (active) next += delta;
   else next = next > delta ? next - delta : 0;
 
-  value_ = static_cast<uint8_t>(next > Config::HddMax ? Config::HddMax : next);
+  value_ = static_cast<uint8_t>(next > config_.maximum ? config_.maximum : next);
 }
