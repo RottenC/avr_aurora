@@ -1,6 +1,6 @@
 #pragma once
 #include <Arduino.h>
-#include <FastLED.h>
+#include "../fastled_compat.h"
 #include "../effect_controller.h"
 #include "../pc_state.h"
 
