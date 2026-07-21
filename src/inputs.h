@@ -19,11 +19,12 @@ public:
   bool powerButtonReleased() const { return powerButtonReleased_; }
   bool resetButtonPressed() const { return resetButtonPressed_; }
   bool debugButtonPressed() const { return debugButtonPressed_; }
+  bool consumeHddEdge();
 private:
   struct Debounced { bool stable=false; bool candidate=false; uint32_t changedAt=0; };
   void updateOne(Debounced &d, bool raw, uint32_t nowMs, bool &pressed, bool &released);
   uint32_t lastPollMs_=0;
-  Debounced powerLed_, hddLed_, powerButton_, resetButton_, stripPower_, debugButton_;
+  Debounced powerLed_, powerButton_, resetButton_, stripPower_, debugButton_;
   NormalizedInputs stable_{};
   bool powerButtonPressed_=false, powerButtonReleased_=false, resetButtonPressed_=false, debugButtonPressed_=false;
 };
