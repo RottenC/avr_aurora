@@ -1,75 +1,127 @@
 #include "pc_state.h"
-#include "config.h"
 
-void PcStateMachine::clearRequests() {
-  startupRequested_=shutdownRequested_=resetRequested_=false;
-  holdPreviewRequested_=cancelHoldPreviewRequested_=false;
+void PcStateMachine::enterOff() {
+  state_ = PcState::Off;
+  trackingHold_ = false;
+  forcedLatched_ = false;
+  startupTransitionRequested_ = false;
+  startupTransitionFinished_ = false;
+  waitingForStripPower_ = false;
 }
 
-void PcStateMachine::markStartupComplete() {
-  if (state_ == PcState::Starting) state_ = PcState::Running;
+void PcStateMachine::enterStarting(PcStateEvents &events, bool stripPowerPresent, uint32_t nowMs) {
+  state_ = PcState::Starting;
+  startingSinceMs_ = nowMs;
+  trackingHold_ = false;
+  forcedLatched_ = false;
+  startupTransitionFinished_ = false;
+  waitingForStripPower_ = !stripPowerPresent;
+  startupTransitionRequested_ = stripPowerPresent;
+  events.requestStartup = stripPowerPresent;
 }
 
-void PcStateMachine::update(const NormalizedInputs &in, bool powerPressed, bool powerReleased, bool resetPressed, PowerLedMode powerMode, uint32_t nowMs) {
-  clearRequests();
+void PcStateMachine::leaveStarting(PcStateEvents &events, PcState nextState) {
+  if (startupTransitionRequested_) events.cancelStartup = true;
+  state_ = nextState;
+  startupTransitionRequested_ = false;
+  startupTransitionFinished_ = false;
+  waitingForStripPower_ = false;
+}
 
-  if (!initialized_) {
-    if (bootAtMs_ == 0) bootAtMs_ = nowMs;
-    if (nowMs - bootAtMs_ < Config::InitialStateObserveMs) return;
-    if (powerMode == PowerLedMode::Blinking) state_ = PcState::Sleeping;
-    else if (powerMode == PowerLedMode::On && in.stripPowerPresent) state_ = PcState::Running;
-    else state_ = PcState::Off;
-    initialized_ = true;
-  }
+PcStateEvents PcStateMachine::update(const PcStateInputs &inputs, uint32_t nowMs) {
+  PcStateEvents events;
 
-  if (state_ == PcState::Off && powerPressed) {
-    state_ = PcState::Starting;
-    startupRequested_ = true;
-    forcedLatched_ = false;
-    return;
-  }
-
-  if (state_ == PcState::Running) {
-    if (resetPressed) resetRequested_ = true;
-
-    if (powerPressed) {
-      trackingHold_ = true;
-      forcedLatched_ = false;
-      powerHoldStartMs_ = nowMs;
-      holdPreviewRequested_ = true;
-    }
-
-    if (trackingHold_ && in.powerButton && !forcedLatched_ &&
-        nowMs - powerHoldStartMs_ >= Config::PowerHoldForcedMs) {
-      forcedLatched_ = true;
-    }
-
-    if (powerReleased && trackingHold_) {
-      trackingHold_ = false;
-      if (forcedLatched_) {
-        state_ = PcState::ShuttingDown;
-      } else {
-        cancelHoldPreviewRequested_ = true;
-        state_ = PcState::ShuttingDown;
-        shutdownRequested_ = true;
+  switch (state_) {
+    case PcState::Off:
+      if (inputs.powerButtonPressed) {
+        enterStarting(events, inputs.stripPowerPresent, nowMs);
+      } else if (inputs.powerMode == PowerLedMode::Blinking) {
+        state_ = PcState::Sleeping;
+      } else if (inputs.powerMode == PowerLedMode::On && inputs.stripPowerPresent) {
+        state_ = PcState::Running;
       }
-    }
+      break;
 
-    if (!trackingHold_) {
-      if (powerMode == PowerLedMode::Blinking) state_ = PcState::Sleeping;
-      else if (powerMode == PowerLedMode::Off) state_ = PcState::Off;
-    }
-  } else if (state_ == PcState::Sleeping) {
-    if (powerMode == PowerLedMode::On) state_ = PcState::Running;
-    else if (powerMode == PowerLedMode::Off) state_ = PcState::Off;
-  } else if (state_ == PcState::ShuttingDown) {
-    if (powerMode == PowerLedMode::Off) state_ = PcState::Off;
+    case PcState::Starting:
+      if (inputs.powerMode == PowerLedMode::Blinking) {
+        leaveStarting(events, PcState::Sleeping);
+        break;
+      }
+
+      if (inputs.powerMode == PowerLedMode::Off &&
+          nowMs - startingSinceMs_ >= config_.startingTimeoutMs) {
+        leaveStarting(events, PcState::Off);
+        break;
+      }
+
+      if (!inputs.stripPowerPresent) {
+        if (startupTransitionRequested_) events.cancelStartup = true;
+        startupTransitionRequested_ = false;
+        startupTransitionFinished_ = false;
+        waitingForStripPower_ = true;
+        break;
+      }
+
+      if (waitingForStripPower_ || !startupTransitionRequested_) {
+        waitingForStripPower_ = false;
+        startupTransitionRequested_ = true;
+        startupTransitionFinished_ = false;
+        events.requestStartup = true;
+      } else if (inputs.startupTransitionFinished) {
+        startupTransitionFinished_ = true;
+      }
+
+      if (startupTransitionFinished_ && inputs.powerMode == PowerLedMode::On) {
+        leaveStarting(events, PcState::Running);
+      }
+      break;
+
+    case PcState::Running:
+      if (inputs.resetButtonPressed) events.requestReset = true;
+
+      if (inputs.powerButtonPressed) {
+        trackingHold_ = true;
+        forcedLatched_ = false;
+        powerHoldStartMs_ = nowMs;
+        events.requestForcedShutdown = true;
+      }
+
+      if (trackingHold_ && inputs.powerButton && !forcedLatched_ &&
+          nowMs - powerHoldStartMs_ >= config_.forcedHoldMs) {
+        forcedLatched_ = true;
+      }
+
+      if (trackingHold_ && inputs.powerButtonReleased) {
+        trackingHold_ = false;
+        state_ = PcState::ShuttingDown;
+        if (!forcedLatched_) {
+          events.cancelForcedShutdown = true;
+          events.requestShutdown = true;
+        }
+        break;
+      }
+
+      if (!trackingHold_) {
+        if (inputs.powerMode == PowerLedMode::Blinking) {
+          state_ = PcState::Sleeping;
+        } else if (inputs.powerMode == PowerLedMode::Off) {
+          enterOff();
+        }
+      }
+      break;
+
+    case PcState::Sleeping:
+      if (inputs.powerMode == PowerLedMode::Off) {
+        enterOff();
+      } else if (inputs.powerMode == PowerLedMode::On && inputs.stripPowerPresent) {
+        state_ = PcState::Running;
+      }
+      break;
+
+    case PcState::ShuttingDown:
+      if (inputs.powerMode == PowerLedMode::Off) enterOff();
+      break;
   }
 
-  if (!in.stripPowerPresent && powerMode == PowerLedMode::Off) state_ = PcState::Off;
-}
-
-const __FlashStringHelper *pcStateName(PcState state) {
-  switch(state){case PcState::Off:return F("Off");case PcState::Starting:return F("Starting");case PcState::Running:return F("Running");case PcState::Sleeping:return F("Sleeping");case PcState::ShuttingDown:return F("ShuttingDown");}
-  return F("?");
+  return events;
 }

@@ -19,7 +19,7 @@ public:
   bool powerButtonReleased() const { return powerButtonReleased_; }
   bool resetButtonPressed() const { return resetButtonPressed_; }
   bool debugButtonPressed() const { return debugButtonPressed_; }
-  bool consumeHddEdge();
+  uint8_t consumeHddEdges();
 private:
   struct Debounced { bool stable=false; bool candidate=false; uint32_t changedAt=0; };
   void updateOne(Debounced &d, bool raw, uint32_t nowMs, bool &pressed, bool &released);

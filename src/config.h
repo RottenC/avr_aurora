@@ -1,14 +1,20 @@
 #pragma once
 
+#include <stdint.h>
+
+#ifdef ARDUINO
 #include <Arduino.h>
 #include "fastled_compat.h"
+#endif
 
 namespace Config {
 constexpr uint8_t LedDataPin = 6;
 constexpr uint8_t LedCount = 56;
 constexpr uint8_t LedVolts = 5;
 constexpr uint16_t LedMaxMilliamps = 2000;
+#ifdef ARDUINO
 constexpr EOrder LedColorOrder = GRB;
+#endif
 
 constexpr uint8_t PowerLedPin = 2;
 constexpr uint8_t HddLedPin = 3;
@@ -42,11 +48,16 @@ constexpr uint32_t ForcedFlashAtMs = 2000;
 constexpr uint32_t StartupDurationMs = 2200;
 constexpr uint32_t ShutdownDurationMs = 1800;
 constexpr uint32_t ResetDurationMs = 900;
+constexpr uint32_t StartingTimeoutMs = 30000;
 
 constexpr uint8_t HddEdgeBoost = 20;
 constexpr uint8_t HddActiveRise = 3;
 constexpr uint8_t HddInactiveDecay = 2;
 constexpr uint8_t HddMax = 128;
+
+constexpr uint32_t DebugSnapshotIntervalMs = 5000;
+constexpr uint16_t DebugHddEventIntervalMs = 250;
+constexpr uint8_t DebugHddEventDelta = 8;
 
 constexpr uint8_t AuroraBaseBrightness = 48;
 constexpr uint8_t AuroraHddBrightnessBoost = 44;

@@ -2,7 +2,7 @@
 #include "config.h"
 
 namespace {
-volatile bool gHddEdgePending = false;
+volatile uint8_t gHddEdgeCount = 0;
 
 bool normalizedRead(uint8_t pin, bool activeHigh) {
   const bool high = digitalRead(pin) == HIGH;
@@ -10,7 +10,7 @@ bool normalizedRead(uint8_t pin, bool activeHigh) {
 }
 
 void onHddActiveEdge() {
-  gHddEdgePending = true;
+  if (gHddEdgeCount != UINT8_MAX) ++gHddEdgeCount;
 }
 }
 
@@ -67,10 +67,10 @@ void Inputs::update(uint32_t nowMs) {
   stable_.debugButton = debugButton_.stable;
 }
 
-bool Inputs::consumeHddEdge() {
+uint8_t Inputs::consumeHddEdges() {
   noInterrupts();
-  const bool result = gHddEdgePending;
-  gHddEdgePending = false;
+  const uint8_t result = gHddEdgeCount;
+  gHddEdgeCount = 0;
   interrupts();
   return result;
 }
