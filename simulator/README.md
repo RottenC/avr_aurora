@@ -46,7 +46,7 @@ Disable **Strip power** to black out the visualized strip without implying a PC 
 
 ## Raw/classified Power LED
 
-The Power LED source can be Manual, Off, On, or Blinking. The raw boolean source is then passed through a Python port of the firmware Power LED tracker, which classifies it as Off, On, or Blinking using the same short-off grace period, blink half-period limits, edge count and stale timeout defaults.
+The Power LED source can be Manual, Off, On, or Blinking. Blinking starts LOW at phase 0 and emits every timestamped transition crossed by a simulation step; a boundary exactly at the end of a step belongs to that current step, avoiding duplicates in the next step. The raw boolean source is then passed through a Python port of the firmware Power LED tracker, which classifies it as Off, On, or Blinking using the same short-off grace period, blink half-period limits, edge count and stale timeout defaults.
 
 ## Manual versus generated HDD signal
 
@@ -54,7 +54,7 @@ The Manual HDD checkbox is separate from the observed raw HDD signal. Manual mod
 
 ## State-driven rendering and preview
 
-In **Auto** render mode, the PC state machine and effect controller select the placeholder renderer. Transition priority is `ForcedShutdown > Shutdown > Reset > Startup > None`. The state-machine and controller ports intentionally reproduce firmware control flow, but full electrical debounce and final polished visuals remain outside this phase.
+In **Auto** render mode, the PC state machine and effect controller select the placeholder renderer. Transition priority is `ForcedShutdown > Shutdown > Reset > Startup > None`. `ForcedShutdown` remains indefinite in the controller, but its placeholder visual progress uses the firmware 4000 ms forced-hold window. The state-machine and controller ports intentionally reproduce firmware control flow, but full electrical debounce and final polished visuals remain outside this phase.
 
 Forced preview modes (`Force Aurora`, `Force Startup`, `Force Shutdown`, `Force Reset`, `Force ForcedShutdown`, `Force Sleep`, `Force Warn`, `Force Off`) render the selected diagnostic placeholder without mutating PC state, Power LED tracking, the effect controller or inputs. Use **Restart preview** to reset preview elapsed/progress.
 
