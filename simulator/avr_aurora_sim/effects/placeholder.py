@@ -1,4 +1,5 @@
 from .base import Effect
+from .. import firmware_defaults as defaults
 from ..avr_math import clamp_u8, div_trunc, qadd8, scale8, u8
 from ..state_types import Transition
 
@@ -35,10 +36,16 @@ class ResetPlaceholder(Effect):
 
 class ForcedShutdownPlaceholder(Effect):
     def render(self, context, leds, diagnostics):
-        progress = context.transition_progress
-        if context.transition is Transition.FORCED_SHUTDOWN and context.transition_duration_ms:
-            progress = clamp_u8(div_trunc(min(context.transition_elapsed_ms, context.transition_duration_ms) * 255, context.transition_duration_ms, diagnostics, "forced progress"), diagnostics, "forced progress clamp")
-        red = qadd8(40, scale8(progress, 180, diagnostics, "forced red"), diagnostics, "forced red boost")
+        elapsed = min(context.transition_elapsed_ms, context.transition_duration_ms)
+        if elapsed <= defaults.FORCED_FLASH_AT_MS:
+            ramp = div_trunc(elapsed * 255, defaults.FORCED_FLASH_AT_MS, diagnostics, "forced rise")
+            red = qadd8(10, scale8(ramp, 150, diagnostics, "forced rise red"), diagnostics, "forced rise boost")
+        else:
+            remaining = context.transition_duration_ms - elapsed
+            fall_duration = context.transition_duration_ms - defaults.FORCED_FLASH_AT_MS
+            ramp = div_trunc(max(0, remaining) * 255, fall_duration, diagnostics, "forced fall")
+            red = scale8(ramp, 160, diagnostics, "forced fall red")
+        red = clamp_u8(red, diagnostics, "forced red clamp")
         for i in range(len(leds)):
             leds[i] = (red, 0, 0)
 

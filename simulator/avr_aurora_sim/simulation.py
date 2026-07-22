@@ -8,7 +8,7 @@ from .hdd_generator import HddGenerator, HddMode, HddParams, HddTransition
 from .input_edges import InputEdgeTracker
 from .model import FrameContext, InputState, LedBuffer, SimulationState, SimulatorConfig
 from .pc_state_machine import PcStateInputs, PcStateMachine
-from .power_led_generator import PowerLedGenerator, PowerLedSourceMode
+from .power_led_generator import PowerLedGenerator, PowerLedSourceMode, PowerLedTransition
 from .power_led_tracker import PowerLedTracker, PowerLedMode
 from .state_types import PcState, Transition
 
@@ -59,8 +59,8 @@ class Simulation:
         current = self.effect_controller.current if transition is None else transition
         start = self.effect_controller.started_at_ms if started_at is None else started_at
         elapsed = self.state.now_ms - start if current is not Transition.NONE else 0
-        duration = self.effect_controller.duration(current)
-        prog = self.effect_controller.progress8(self.state.now_ms) if progress is None else progress
+        duration = self._visual_duration(current)
+        prog = self._visual_progress8(current, elapsed, duration) if progress is None else progress
         return FrameContext(
             self.state.now_ms, dt_ms, self.state.frame_number, self.pc_state_machine.state, current,
             self.inputs.power_button, self.inputs.reset_button, self.inputs.manual_power_led, self.inputs.manual_hdd_led,
@@ -99,16 +99,16 @@ class Simulation:
     def step(self, dt_ms: int | None = None, real_budget_ms: int | None = None):
         frame_start_ns = perf_counter_ns()
         dt_ms = self.config.frame_interval_ms if dt_ms is None else int(dt_ms)
+        frame_start_ms = self.state.now_ms
         self.state.now_ms += dt_ms
         self.state.frame_number += 1
         self.diagnostics.set_context(self.state.frame_number, self.state.now_ms)
 
-        self.state.raw_power_led = self.power_led_generator.update(dt_ms, self.inputs.manual_power_led)
+        final_power_led, power_transitions = self.power_led_generator.update(dt_ms, self.inputs.manual_power_led)
+        self._update_power_led_tracker(frame_start_ms, dt_ms, final_power_led, power_transitions)
         start_raw_hdd = self.state.raw_hdd_led
         raw_hdd, transitions = self.generator.update(dt_ms, self.inputs.manual_hdd_led)
         edges = self.input_edges.update(self.inputs.power_button, self.inputs.reset_button)
-        self.power_led_tracker.update(self.state.raw_power_led, self.state.now_ms)
-        self.state.power_led_mode = self.power_led_tracker.mode(self.state.now_ms)
         self._update_hdd_activity(dt_ms, start_raw_hdd, transitions)
         self.state.raw_hdd_led = raw_hdd
 
@@ -135,6 +135,23 @@ class Simulation:
         if elapsed_ns > budget_ms * 1_000_000:
             self.diagnostics.record("slow_frame", (self.last_frame_elapsed_ms, budget_ms), None, "measured frame time")
         return ctx, self.led_buffer
+
+    def _visual_duration(self, transition: Transition) -> int:
+        if transition is Transition.FORCED_SHUTDOWN:
+            return defaults.POWER_HOLD_FORCED_MS
+        return self.effect_controller.duration(transition)
+
+    def _visual_progress8(self, transition: Transition, elapsed_ms: int, duration_ms: int) -> int:
+        if transition is Transition.NONE or duration_ms <= 0:
+            return 0
+        return clamp_u8(div_trunc(min(elapsed_ms, duration_ms) * 255, duration_ms, self.diagnostics, "transition visual progress"), self.diagnostics, "transition visual progress clamp")
+
+    def _update_power_led_tracker(self, frame_start_ms: int, dt_ms: int, final_raw: bool, transitions: list[PowerLedTransition]) -> None:
+        for transition in transitions:
+            self.power_led_tracker.update(transition.active, frame_start_ms + transition.offset_ms)
+        self.power_led_tracker.update(final_raw, frame_start_ms + dt_ms)
+        self.state.raw_power_led = final_raw
+        self.state.power_led_mode = self.power_led_tracker.mode(self.state.now_ms)
 
     def _render(self, ctx: FrameContext) -> None:
         self.led_buffer.clear()

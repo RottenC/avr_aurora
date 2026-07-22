@@ -43,9 +43,6 @@ class PcStateMachine:
     def reset(self) -> None:
         self.__init__(self.config)
 
-    @property
-    def power_hold_duration_ms(self) -> int:
-        return 0
 
     def hold_duration(self, now_ms: int) -> int:
         return now_ms - self.power_hold_start_ms if self.tracking_hold else 0
