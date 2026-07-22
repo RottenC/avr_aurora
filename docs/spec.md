@@ -40,7 +40,8 @@ enum class PcState : uint8_t {
     Starting,
     Running,
     Sleeping,
-    ShuttingDown,
+    AwaitShutdown,
+    Warn,
 };
 ```
 
@@ -64,6 +65,7 @@ Keeping these separate allows, for example, `PcState::Running` plus `TransitionE
 
 - Power button press -> `Starting` and mark startup as pending.
 - Startup rendering begins only after `strip_power_present` becomes true.
+- Stable Power LED on -> `Running`, even if strip power is absent; strip-dependent transitions are not requested until an actual local startup is observed.
 
 ### Starting
 
@@ -76,20 +78,29 @@ Keeping these separate allows, for example, `PcState::Running` plus `TransitionE
 
 - Reset button press -> red reset transition; return to normal ambient effect after completion.
 - Power button press starts hold tracking.
-- Power button release before 4000 ms -> normal shutdown transition and `ShuttingDown`.
-- Power button remains held for 4000 ms -> forced shutdown is latched.
+- Power button release before 4000 ms -> normal shutdown transition and `AwaitShutdown`.
+- Power button remains held for 4000 ms -> forced shutdown is latched, then release enters `AwaitShutdown`.
 - Detected Power LED blinking -> `Sleeping`.
 - Power LED off, after filtering -> `Off`.
 
-### ShuttingDown
+### AwaitShutdown
 
-- Run the white shutdown wave once, then hold every LED at black even while the OS continues shutting down.
+- Run the white shutdown wave once for a normal shutdown request, then hold every LED at black even while the OS continues shutting down.
+- Do not return to `Running` merely because the Power LED stays active briefly.
+- Power LED blinking does not enter `Sleeping`; shutdown-related states have priority over sleep reconciliation.
+- Power LED off -> `Off`.
+- Power LED still active after 120000 ms -> `Warn`.
+
+### Warn
+
+- Minimal deterministic shutdown warning state for a machine that did not power off after the normal shutdown request.
+- Remain in `Warn` while Power LED is active.
 - Power LED off -> `Off`.
 
 ### Sleeping
 
-- Render the sleep ambient effect.
-- Stable Power LED on -> `Running`.
+- Render the sleep ambient effect only when strip power is present.
+- Stable Power LED on -> `Running`, even if strip power is absent. This keeps logical PC state aware of a running machine while LED output remains disabled until strip power returns.
 - Stable Power LED off -> `Off`.
 
 ## Power LED classification

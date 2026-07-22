@@ -49,6 +49,7 @@ constexpr uint32_t StartupDurationMs = 2200;
 constexpr uint32_t ShutdownDurationMs = 1800;
 constexpr uint32_t ResetDurationMs = 900;
 constexpr uint32_t StartingTimeoutMs = 30000;
+constexpr uint32_t ShutdownWarningTimeoutMs = 120000;
 
 constexpr uint8_t HddEdgeBoost = 20;
 constexpr uint8_t HddActiveRise = 3;

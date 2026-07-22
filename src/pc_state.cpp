@@ -28,6 +28,11 @@ void PcStateMachine::leaveStarting(PcStateEvents &events, PcState nextState) {
   waitingForStripPower_ = false;
 }
 
+void PcStateMachine::enterAwaitShutdown(uint32_t nowMs) {
+  state_ = PcState::AwaitShutdown;
+  awaitingShutdownSinceMs_ = nowMs;
+}
+
 PcStateEvents PcStateMachine::update(const PcStateInputs &inputs, uint32_t nowMs) {
   PcStateEvents events;
 
@@ -37,7 +42,7 @@ PcStateEvents PcStateMachine::update(const PcStateInputs &inputs, uint32_t nowMs
         enterStarting(events, inputs.stripPowerPresent, nowMs);
       } else if (inputs.powerMode == PowerLedMode::Blinking) {
         state_ = PcState::Sleeping;
-      } else if (inputs.powerMode == PowerLedMode::On && inputs.stripPowerPresent) {
+      } else if (inputs.powerMode == PowerLedMode::On) {
         state_ = PcState::Running;
       }
       break;
@@ -96,7 +101,7 @@ PcStateEvents PcStateMachine::update(const PcStateInputs &inputs, uint32_t nowMs
             forcedLatched_ || nowMs - powerHoldStartMs_ >= config_.forcedHoldMs;
         trackingHold_ = false;
         forcedLatched_ = heldLongEnough;
-        state_ = PcState::ShuttingDown;
+        enterAwaitShutdown(nowMs);
         if (!heldLongEnough) {
           events.cancelForcedShutdown = true;
           events.requestShutdown = true;
@@ -116,12 +121,21 @@ PcStateEvents PcStateMachine::update(const PcStateInputs &inputs, uint32_t nowMs
     case PcState::Sleeping:
       if (inputs.powerMode == PowerLedMode::Off) {
         enterOff();
-      } else if (inputs.powerMode == PowerLedMode::On && inputs.stripPowerPresent) {
+      } else if (inputs.powerMode == PowerLedMode::On) {
         state_ = PcState::Running;
       }
       break;
 
-    case PcState::ShuttingDown:
+    case PcState::AwaitShutdown:
+      if (inputs.powerMode == PowerLedMode::Off) {
+        enterOff();
+      } else if (inputs.powerMode == PowerLedMode::On &&
+                 nowMs - awaitingShutdownSinceMs_ >= config_.shutdownWarningTimeoutMs) {
+        state_ = PcState::Warn;
+      }
+      break;
+
+    case PcState::Warn:
       if (inputs.powerMode == PowerLedMode::Off) enterOff();
       break;
   }

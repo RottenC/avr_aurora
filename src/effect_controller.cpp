@@ -29,9 +29,9 @@ bool EffectController::isCompatible(TransitionEffect effect, PcState state) {
     case TransitionEffect::Reset:
       return state == PcState::Running;
     case TransitionEffect::Shutdown:
-      return state == PcState::ShuttingDown;
+      return state == PcState::AwaitShutdown || state == PcState::Warn;
     case TransitionEffect::ForcedShutdown:
-      return state == PcState::Running || state == PcState::ShuttingDown;
+      return state == PcState::Running || state == PcState::AwaitShutdown;
     case TransitionEffect::None:
       return true;
   }

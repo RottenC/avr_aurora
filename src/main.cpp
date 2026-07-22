@@ -44,7 +44,7 @@ void loop() {
   const PowerLedMode powerMode = powerLed.mode(now);
 
   if (now - lastHddUpdateMs >= Config::HddUpdateMs) {
-    const uint16_t elapsed = static_cast<uint16_t>(now - lastHddUpdateMs);
+    const uint32_t elapsed = now - lastHddUpdateMs;
     lastHddUpdateMs = now;
     hdd.update(in.hddLed, inputs.consumeHddEdges(), elapsed);
   }
@@ -65,7 +65,7 @@ void loop() {
   if (events.cancelForcedShutdown) effects.cancel(TransitionEffect::ForcedShutdown);
   if (events.requestStartup) effects.restart(TransitionEffect::Startup, now);
   if (events.requestShutdown) effects.request(TransitionEffect::Shutdown, now);
-  if (events.requestReset) effects.request(TransitionEffect::Reset, now);
+  if (events.requestReset) effects.restart(TransitionEffect::Reset, now);
   if (events.requestForcedShutdown) {
     effects.request(TransitionEffect::ForcedShutdown, pc.powerHoldStartMs());
   }

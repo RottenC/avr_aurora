@@ -12,7 +12,7 @@ struct HddActivityConfig {
 class HddActivity {
 public:
   explicit HddActivity(const HddActivityConfig &config) : config_(config) {}
-  void update(bool active, uint8_t edgeCount, uint16_t elapsedMs);
+  void update(bool active, uint8_t edgeCount, uint32_t elapsedMs);
   uint8_t value() const { return value_; }
 private:
   HddActivityConfig config_;

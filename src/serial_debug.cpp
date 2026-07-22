@@ -8,7 +8,8 @@ const __FlashStringHelper *pcStateName(PcState state) {
     case PcState::Starting: return F("Starting");
     case PcState::Running: return F("Running");
     case PcState::Sleeping: return F("Sleeping");
-    case PcState::ShuttingDown: return F("ShuttingDown");
+    case PcState::AwaitShutdown: return F("AwaitShutdown");
+    case PcState::Warn: return F("Warn");
   }
   return F("?");
 }
