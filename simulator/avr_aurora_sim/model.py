@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from . import firmware_defaults as defaults
 from .avr_math import require_rgb
 from .diagnostics import Diagnostics
 from .power_led_tracker import PowerLedMode
@@ -10,17 +11,24 @@ RGB = tuple[int, int, int]
 @dataclass
 class SimulatorConfig:
     led_count: int = LED_COUNT
-    frame_interval_ms: int = 20
-    target_fps: int = 50
-    power_hold_forced_ms: int = 4000
-    hdd_update_ms: int = 10
-    hdd_edge_boost: int = 20
-    hdd_active_rise: int = 3
-    hdd_inactive_decay: int = 2
-    hdd_max: int = 128
-    startup_duration_ms: int = 2200
-    shutdown_duration_ms: int = 1800
-    reset_duration_ms: int = 900
+    frame_interval_ms: int = defaults.FRAME_INTERVAL_MS
+    target_fps: int = 1000 // defaults.FRAME_INTERVAL_MS
+    power_hold_forced_ms: int = defaults.POWER_HOLD_FORCED_MS
+    hdd_update_ms: int = defaults.HDD_UPDATE_MS
+    hdd_edge_boost: int = defaults.HDD_EDGE_BOOST
+    hdd_active_rise: int = defaults.HDD_ACTIVE_RISE
+    hdd_inactive_decay: int = defaults.HDD_INACTIVE_DECAY
+    hdd_max: int = defaults.HDD_MAX
+    startup_duration_ms: int = defaults.STARTUP_DURATION_MS
+    shutdown_duration_ms: int = defaults.SHUTDOWN_DURATION_MS
+    reset_duration_ms: int = defaults.RESET_DURATION_MS
+    short_power_led_off_ignore_ms: int = defaults.SHORT_POWER_LED_OFF_IGNORE_MS
+    power_led_blink_min_half_period_ms: int = defaults.POWER_LED_BLINK_MIN_HALF_PERIOD_MS
+    power_led_blink_max_half_period_ms: int = defaults.POWER_LED_BLINK_MAX_HALF_PERIOD_MS
+    power_led_blink_stale_ms: int = defaults.POWER_LED_BLINK_STALE_MS
+    power_led_blink_edges_required: int = defaults.POWER_LED_BLINK_EDGES_REQUIRED
+    starting_timeout_ms: int = defaults.STARTING_TIMEOUT_MS
+    shutdown_warning_timeout_ms: int = defaults.SHUTDOWN_WARNING_TIMEOUT_MS
 
 @dataclass
 class InputState:
@@ -97,3 +105,4 @@ class SimulationState:
     preview_started_at_ms: int = 0
     power_hold_ms: int = 0
     random_seed: int = 1
+    last_context: FrameContext | None = None

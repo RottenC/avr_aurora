@@ -24,19 +24,52 @@ class PowerLedGenerator:
         self.half_period_ms = half_period_ms
         self.phase_ms = 0
         self.raw = False
+        self._pending: list[PowerLedTransition] = []
 
     def reset(self) -> None:
         self.phase_ms = 0
         self.raw = False
+        self._pending.clear()
+
+    def set_mode(self, mode: PowerLedSourceMode, reset_phase: bool = True) -> None:
+        if mode is self.mode:
+            return
+        self.mode = mode
+        if mode is PowerLedSourceMode.BLINKING and reset_phase:
+            self.phase_ms = 0
+            self._queue_reconcile(False)
+
+    def set_half_period_ms(self, value: int, reset_phase: bool = True) -> None:
+        value = max(1, int(value))
+        if value == self.half_period_ms:
+            return
+        self.half_period_ms = value
+        if self.mode is PowerLedSourceMode.BLINKING and reset_phase:
+            self.phase_ms = 0
+            self._queue_reconcile(False)
 
     def update(self, dt_ms: int, manual_power_led: bool) -> tuple[bool, list[PowerLedTransition]]:
+        transitions = self._drain_pending()
         if self.mode is PowerLedSourceMode.MANUAL:
-            return self._hold(bool(manual_power_led))
+            final, more = self._hold(bool(manual_power_led)); return final, transitions + more
         if self.mode is PowerLedSourceMode.OFF:
-            return self._hold(False)
+            final, more = self._hold(False); return final, transitions + more
         if self.mode is PowerLedSourceMode.ON:
-            return self._hold(True)
-        return self._blink(dt_ms)
+            final, more = self._hold(True); return final, transitions + more
+        final, more = self._blink(dt_ms)
+        return final, transitions + more
+
+    def _queue_reconcile(self, active: bool) -> None:
+        self._pending.clear()
+        if self.raw != active:
+            self._pending.append(PowerLedTransition(0, active))
+
+    def _drain_pending(self) -> list[PowerLedTransition]:
+        transitions = self._pending
+        self._pending = []
+        for transition in transitions:
+            self.raw = transition.active
+        return transitions
 
     def _hold(self, active: bool) -> tuple[bool, list[PowerLedTransition]]:
         transitions = [] if self.raw == active else [PowerLedTransition(0, active)]

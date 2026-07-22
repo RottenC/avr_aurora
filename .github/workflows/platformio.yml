@@ -65,8 +65,9 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install simulator test dependencies
-        run: python -m pip install pytest
+        run: python -m pip install -r simulator/requirements.txt
       - name: Run simulator tests
         run: python -m pytest -q simulator/tests
         env:
           PYTHONPATH: simulator
+          QT_QPA_PLATFORM: offscreen

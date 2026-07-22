@@ -46,7 +46,7 @@ Disable **Strip power** to black out the visualized strip without implying a PC 
 
 ## Raw/classified Power LED
 
-The Power LED source can be Manual, Off, On, or Blinking. Blinking starts LOW at phase 0 and emits every timestamped transition crossed by a simulation step; a boundary exactly at the end of a step belongs to that current step, avoiding duplicates in the next step. The raw boolean source is then passed through a Python port of the firmware Power LED tracker, which classifies it as Off, On, or Blinking using the same short-off grace period, blink half-period limits, edge count and stale timeout defaults.
+The Power LED source can be Manual, Off, On, or Blinking. Source-mode and blink-period changes are reconciled through timestamped transitions on the next simulation update instead of silently changing raw state. Blinking starts LOW at phase 0 and emits every timestamped transition crossed by a simulation step; a boundary exactly at the end of a step belongs to that current step, avoiding duplicates in the next step. The raw boolean source is then passed through a Python port of the firmware Power LED tracker, which classifies it as Off, On, or Blinking using the same short-off grace period, blink half-period limits, edge count and stale timeout defaults.
 
 ## Manual versus generated HDD signal
 
@@ -60,9 +60,9 @@ Forced preview modes (`Force Aurora`, `Force Startup`, `Force Shutdown`, `Force 
 
 ## Diagnostics and timeline
 
-Diagnostics keep cumulative counters and a bounded retained event history. The UI shows both a counter summary and a table with time, frame, operation, label, inputs and result. Strict mode raises for unexpected invalid LED indices/RGB/ranges while intentional wrapping, saturation and explicit clamps remain recorded and allowed.
+Diagnostics keep cumulative counters and a bounded retained event history. The UI shows both a counter summary and a throttled newest-first table with time, frame, operation, label, inputs and result. Strict mode raises for unexpected invalid LED indices/RGB/ranges while intentional wrapping, saturation and explicit clamps remain recorded and allowed.
 
-The timeline is a lightweight custom PySide6 widget, not Matplotlib. It shows about the last 15 seconds of simulated time for raw Power LED, classified Power LED mode, raw HDD LED, smoothed HDD activity, PC state and active transition.
+The timeline is a lightweight custom PySide6 widget, not Matplotlib. It uses time-based sampled retention, deterministic colors, and shows about the last 15 seconds of simulated time for raw Power LED, classified Power LED mode, raw HDD LED, smoothed HDD activity, PC state and active transition.
 
 ## Adding an effect
 
