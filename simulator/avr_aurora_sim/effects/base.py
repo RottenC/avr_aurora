@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
-from ..model import FrameContext, RGB
 from ..diagnostics import Diagnostics
+from ..model import FrameContext, LedBuffer
 class Effect(ABC):
-    def reset(self, context:FrameContext)->None: pass
+    def reset(self, context: FrameContext) -> None: pass
     @abstractmethod
-    def render(self, context:FrameContext, leds:list[RGB], diagnostics:Diagnostics)->None: ...
+    def render(self, context: FrameContext, leds: LedBuffer, diagnostics: Diagnostics) -> None: ...

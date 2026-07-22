@@ -1,10 +1,13 @@
+from collections import Counter, deque
 from dataclasses import dataclass, field
-from collections import Counter
+from typing import Deque
+
+DEFAULT_MAX_EVENTS = 500
 
 class StrictDiagnosticError(RuntimeError):
     pass
 
-@dataclass
+@dataclass(frozen=True)
 class DiagnosticEvent:
     operation: str
     inputs: tuple
@@ -16,10 +19,14 @@ class DiagnosticEvent:
 @dataclass
 class Diagnostics:
     strict: bool = False
+    max_events: int = DEFAULT_MAX_EVENTS
     frame_number: int = 0
     now_ms: int = 0
     counters: Counter = field(default_factory=Counter)
-    events: list[DiagnosticEvent] = field(default_factory=list)
+    events: Deque[DiagnosticEvent] = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.events = deque(maxlen=self.max_events)
 
     def set_context(self, frame_number: int, now_ms: int) -> None:
         self.frame_number = frame_number
@@ -33,4 +40,5 @@ class Diagnostics:
             raise StrictDiagnosticError(f"{operation}: inputs={event.inputs} result={result} label={label}")
 
     def clear(self) -> None:
-        self.counters.clear(); self.events.clear()
+        self.counters.clear()
+        self.events.clear()
