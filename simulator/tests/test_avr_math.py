@@ -11,6 +11,9 @@ def test_wraps_and_counters():
 
 def test_scale8_uses_uint8_inputs_and_records_wrap():
     diagnostics = Diagnostics()
+    assert scale8(255, 255, diagnostics) == 255
+    assert scale8(255, 0, diagnostics) == 0
+    assert scale8(128, 128, diagnostics) == 64
     assert scale8(300, 128, diagnostics, "scale") == 22
     assert diagnostics.counters["u8_wrap"] == 1
 

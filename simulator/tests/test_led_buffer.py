@@ -30,3 +30,10 @@ def test_strict_raises_for_index_and_rgb():
         buffer[99] = (1, 2, 3)
     with pytest.raises(StrictDiagnosticError):
         buffer[0] = (1, 2, 300)
+
+def test_non_integer_indices_record_diagnostic():
+    for bad in (1.5, "4", None, slice(0, 2)):
+        diagnostics = Diagnostics()
+        buffer = LedBuffer(diagnostics)
+        buffer[bad] = (1, 2, 3)  # type: ignore[index]
+        assert diagnostics.counters["invalid_led_index"] == 1

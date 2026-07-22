@@ -1,10 +1,16 @@
 from time import perf_counter_ns
-from .model import InputState, SimulationState, SimulatorConfig, FrameContext, LedBuffer
-from .state_types import PcState, Transition
+from . import firmware_defaults as defaults
 from .diagnostics import Diagnostics
-from .avr_math import clamp_u8
+from .avr_math import clamp_u8, div_trunc
+from .effect_controller import EffectController
+from .effects import AuroraPlaceholder, ForcedShutdownPlaceholder, OffEffect, ResetPlaceholder, ShutdownPlaceholder, SleepPlaceholder, StartupPlaceholder, WarnPlaceholder
 from .hdd_generator import HddGenerator, HddMode, HddParams, HddTransition
-from .effects import PlaceholderEffect
+from .input_edges import InputEdgeTracker
+from .model import FrameContext, InputState, LedBuffer, SimulationState, SimulatorConfig
+from .pc_state_machine import PcStateInputs, PcStateMachine
+from .power_led_generator import PowerLedGenerator, PowerLedSourceMode
+from .power_led_tracker import PowerLedTracker, PowerLedMode
+from .state_types import PcState, Transition
 
 class Simulation:
     def __init__(self):
@@ -13,35 +19,82 @@ class Simulation:
         self.state = SimulationState()
         self.diagnostics = Diagnostics()
         self.generator = HddGenerator(self.state.random_seed)
-        self.effect = PlaceholderEffect()
+        self.power_led_generator = PowerLedGenerator()
+        self.power_led_tracker = PowerLedTracker()
+        self.input_edges = InputEdgeTracker()
+        self.pc_state_machine = PcStateMachine()
+        self.effect_controller = EffectController()
+        self.effects = {
+            "Off": OffEffect(), "Aurora": AuroraPlaceholder(), "Startup": StartupPlaceholder(), "Shutdown": ShutdownPlaceholder(),
+            "Reset": ResetPlaceholder(), "ForcedShutdown": ForcedShutdownPlaceholder(), "Sleep": SleepPlaceholder(), "Warn": WarnPlaceholder(),
+        }
         self.led_buffer = LedBuffer(self.diagnostics, self.config.led_count)
         self.last_frame_elapsed_ms = 0.0
+        self._pending_edge_count = 0
+        self.render_override = "Auto"
 
     def restart(self) -> None:
         seed = self.state.random_seed
         strict = self.diagnostics.strict
         mode = self.generator.mode
         params = HddParams(**vars(self.generator.params))
+        pwr_mode = self.power_led_generator.mode
+        pwr_half = self.power_led_generator.half_period_ms
         inputs = InputState(**vars(self.inputs))
         config = SimulatorConfig(**vars(self.config))
         max_events = self.diagnostics.max_events
-        self.config = config
-        self.inputs = inputs
-        self.state = SimulationState(random_seed=seed)
+        override = self.render_override
+        self.__init__()
+        self.config = config; self.inputs = inputs; self.state = SimulationState(random_seed=seed)
         self.diagnostics = Diagnostics(strict=strict, max_events=max_events)
         self.generator = HddGenerator(seed, mode, params)
-        self.effect = PlaceholderEffect()
+        self.power_led_generator = PowerLedGenerator(pwr_mode, pwr_half)
+        self.pc_state_machine = PcStateMachine()
+        self.effect_controller = EffectController()
         self.led_buffer = LedBuffer(self.diagnostics, self.config.led_count)
-        self.last_frame_elapsed_ms = 0.0
+        self._pending_edge_count = 0
+        self.render_override = override
 
-    def context(self, dt_ms: int = 0) -> FrameContext:
-        return FrameContext(self.state.now_ms, dt_ms, self.state.frame_number, self.state.pc_state, self.state.transition, self.inputs.power_button, self.inputs.reset_button, self.inputs.power_led, self.inputs.hdd_led, self.inputs.strip_power, self.state.hdd_activity)
+    def context(self, dt_ms: int = 0, transition: Transition | None = None, started_at: int | None = None, progress: int | None = None) -> FrameContext:
+        current = self.effect_controller.current if transition is None else transition
+        start = self.effect_controller.started_at_ms if started_at is None else started_at
+        elapsed = self.state.now_ms - start if current is not Transition.NONE else 0
+        duration = self.effect_controller.duration(current)
+        prog = self.effect_controller.progress8(self.state.now_ms) if progress is None else progress
+        return FrameContext(
+            self.state.now_ms, dt_ms, self.state.frame_number, self.pc_state_machine.state, current,
+            self.inputs.power_button, self.inputs.reset_button, self.inputs.manual_power_led, self.inputs.manual_hdd_led,
+            self.state.raw_power_led, self.state.power_led_mode, self.state.raw_hdd_led, self.inputs.strip_power, self.state.hdd_activity,
+            start, elapsed, duration, prog, self.preview_elapsed_ms(), self.preview_duration_ms(), self.preview_progress8()
+        )
 
     def set_hdd_mode(self, mode: HddMode) -> None:
         self.generator.set_mode(mode)
 
     def set_hdd_params(self, params: HddParams) -> None:
         self.generator.set_params(params)
+
+    def set_power_led_mode(self, mode: PowerLedSourceMode) -> None:
+        self.power_led_generator.mode = mode
+
+    def restart_preview(self) -> None:
+        self.state.preview_started_at_ms = self.state.now_ms
+
+    def preview_duration_ms(self) -> int:
+        effect = self._override_transition()
+        if effect is Transition.STARTUP: return defaults.STARTUP_DURATION_MS
+        if effect is Transition.SHUTDOWN: return defaults.SHUTDOWN_DURATION_MS
+        if effect is Transition.RESET: return defaults.RESET_DURATION_MS
+        if effect is Transition.FORCED_SHUTDOWN: return defaults.POWER_HOLD_FORCED_MS
+        return 0
+
+    def preview_elapsed_ms(self) -> int:
+        return self.state.now_ms - self.state.preview_started_at_ms if self.render_override != "Auto" else 0
+
+    def preview_progress8(self) -> int:
+        duration = self.preview_duration_ms()
+        if not duration: return 0
+        return clamp_u8(div_trunc(min(self.preview_elapsed_ms(), duration) * 255, duration), self.diagnostics, "preview progress")
 
     def step(self, dt_ms: int | None = None, real_budget_ms: int | None = None):
         frame_start_ns = perf_counter_ns()
@@ -50,20 +103,32 @@ class Simulation:
         self.state.frame_number += 1
         self.diagnostics.set_context(self.state.frame_number, self.state.now_ms)
 
-        start_raw = self.generator.raw
-        raw, transitions = self.generator.update(dt_ms, self.inputs.hdd_led)
-        self._update_hdd_activity(dt_ms, start_raw, transitions)
-        self.inputs.hdd_led = raw
+        self.state.raw_power_led = self.power_led_generator.update(dt_ms, self.inputs.manual_power_led)
+        start_raw_hdd = self.state.raw_hdd_led
+        raw_hdd, transitions = self.generator.update(dt_ms, self.inputs.manual_hdd_led)
+        edges = self.input_edges.update(self.inputs.power_button, self.inputs.reset_button)
+        self.power_led_tracker.update(self.state.raw_power_led, self.state.now_ms)
+        self.state.power_led_mode = self.power_led_tracker.mode(self.state.now_ms)
+        self._update_hdd_activity(dt_ms, start_raw_hdd, transitions)
+        self.state.raw_hdd_led = raw_hdd
 
-        self.state.power_hold_ms = self.state.power_hold_ms + dt_ms if self.inputs.power_button else 0
-        self.state.pc_state = PcState.RUNNING if self.inputs.power_led else PcState.OFF
-        self.state.transition = Transition.RESET if self.inputs.reset_button else Transition.NONE
+        self.effect_controller.update(self.state.now_ms)
+        finished = self.effect_controller.consume_finished()
+        pc_inputs = PcStateInputs(self.inputs.strip_power, self.inputs.power_button, edges, self.state.power_led_mode, finished is Transition.STARTUP)
+        events = self.pc_state_machine.update(pc_inputs, self.state.now_ms)
+        self.state.pc_state = self.pc_state_machine.state
+        self.state.power_hold_ms = self.pc_state_machine.hold_duration(self.state.now_ms)
+        if events.cancel_startup: self.effect_controller.cancel(Transition.STARTUP)
+        if events.cancel_forced_shutdown: self.effect_controller.cancel(Transition.FORCED_SHUTDOWN)
+        if events.request_startup: self.effect_controller.request(Transition.STARTUP, self.state.now_ms)
+        if events.request_reset: self.effect_controller.request(Transition.RESET, self.state.now_ms)
+        if events.request_forced_shutdown: self.effect_controller.request(Transition.FORCED_SHUTDOWN, self.state.now_ms)
+        if events.request_shutdown: self.effect_controller.request(Transition.SHUTDOWN, self.state.now_ms)
+        self.effect_controller.reconcile(self.pc_state_machine.state)
+        self.state.transition = self.effect_controller.current
 
         ctx = self.context(dt_ms)
-        self.led_buffer.clear()
-        if self.inputs.strip_power:
-            self.effect.render(ctx, self.led_buffer, self.diagnostics)
-
+        self._render(ctx)
         elapsed_ns = perf_counter_ns() - frame_start_ns
         self.last_frame_elapsed_ms = elapsed_ns / 1_000_000
         budget_ms = self.config.frame_interval_ms if real_budget_ms is None else real_budget_ms
@@ -71,7 +136,35 @@ class Simulation:
             self.diagnostics.record("slow_frame", (self.last_frame_elapsed_ms, budget_ms), None, "measured frame time")
         return ctx, self.led_buffer
 
+    def _render(self, ctx: FrameContext) -> None:
+        self.led_buffer.clear()
+        if not self.inputs.strip_power:
+            return
+        key = self._selected_effect_key(ctx)
+        effect_ctx = ctx if self.render_override == "Auto" else self._preview_context(ctx)
+        self.effects[key].render(effect_ctx, self.led_buffer, self.diagnostics)
+
+    def _selected_effect_key(self, ctx: FrameContext) -> str:
+        if self.render_override != "Auto":
+            return self.render_override.replace("Force ", "")
+        if ctx.transition is Transition.STARTUP: return "Startup"
+        if ctx.transition is Transition.SHUTDOWN: return "Shutdown"
+        if ctx.transition is Transition.RESET: return "Reset"
+        if ctx.transition is Transition.FORCED_SHUTDOWN: return "ForcedShutdown"
+        if ctx.pc_state is PcState.SLEEPING: return "Sleep"
+        if ctx.pc_state is PcState.WARN: return "Warn"
+        if ctx.pc_state is PcState.RUNNING: return "Aurora"
+        return "Off"
+
+    def _override_transition(self) -> Transition:
+        return {"Force Startup": Transition.STARTUP, "Force Shutdown": Transition.SHUTDOWN, "Force Reset": Transition.RESET, "Force ForcedShutdown": Transition.FORCED_SHUTDOWN}.get(self.render_override, Transition.NONE)
+
+    def _preview_context(self, ctx: FrameContext) -> FrameContext:
+        transition = self._override_transition()
+        return self.context(ctx.dt_ms, transition, self.state.preview_started_at_ms, self.preview_progress8())
+
     def _update_hdd_activity(self, dt_ms: int, start_raw: bool, transitions: list[HddTransition]) -> None:
+        self.state.active_edges_this_frame = 0
         active = start_raw
         edge_count = 0
         by_offset: dict[int, list[HddTransition]] = {}
@@ -82,27 +175,22 @@ class Simulation:
                 active = transition.active
                 if transition.active_edge:
                     edge_count += 1
+                    self.state.active_edges_this_frame += 1
             self.state.hdd_pending_ms += 1
             if self.state.hdd_pending_ms >= self.config.hdd_update_ms:
                 self._apply_hdd_tick(active, edge_count, self.config.hdd_update_ms)
                 self.state.hdd_pending_ms -= self.config.hdd_update_ms
                 edge_count = 0
         if edge_count:
-            self._pending_edge_count = getattr(self, "_pending_edge_count", 0) + edge_count
-        elif not hasattr(self, "_pending_edge_count"):
-            self._pending_edge_count = 0
+            self._pending_edge_count += edge_count
 
     def _apply_hdd_tick(self, active: bool, edge_count: int, elapsed_ms: int) -> None:
-        edge_count += getattr(self, "_pending_edge_count", 0)
+        edge_count += self._pending_edge_count
         self._pending_edge_count = 0
-        next_value = int(self.state.hdd_activity)
-        next_value += edge_count * self.config.hdd_edge_boost
+        next_value = int(self.state.hdd_activity) + edge_count * self.config.hdd_edge_boost
         ticks = elapsed_ms // self.config.hdd_update_ms
         delta = ticks * (self.config.hdd_active_rise if active else self.config.hdd_inactive_decay)
-        if active:
-            next_value += delta
-        else:
-            next_value = max(0, next_value - delta)
+        next_value = next_value + delta if active else max(0, next_value - delta)
         if next_value > self.config.hdd_max:
             self.diagnostics.record("clamped_value", ("hdd_activity", next_value), self.config.hdd_max, "hdd max")
             next_value = self.config.hdd_max

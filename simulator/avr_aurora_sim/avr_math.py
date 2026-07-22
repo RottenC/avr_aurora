@@ -86,11 +86,13 @@ def div_trunc(n: int, d: int, diagnostics: Diagnostics | None = None, label: str
     return result
 
 def scale8(value: int, scale: int, diagnostics: Diagnostics | None = None, label: str = "") -> int:
+    """FastLED fixed scale8 semantics (FASTLED_SCALE8_FIXED=1): (value*scale + value) >> 8."""
     value8 = u8(value, diagnostics, f"{label}: value" if label else "scale8: value")
     scale8_value = u8(scale, diagnostics, f"{label}: scale" if label else "scale8: scale")
-    return (value8 * scale8_value) >> 8
+    return (value8 * scale8_value + value8) >> 8
 
 def lerp8(a: int, b: int, amount: int, diagnostics: Diagnostics | None = None, label: str = "") -> int:
+    """Simulator helper with uint8 inputs and C++-style truncation; not a claimed FastLED byte-for-byte port."""
     a8 = u8(a, diagnostics, f"{label}: a" if label else "lerp8: a")
     b8 = u8(b, diagnostics, f"{label}: b" if label else "lerp8: b")
     amount8 = u8(amount, diagnostics, f"{label}: amount" if label else "lerp8: amount")

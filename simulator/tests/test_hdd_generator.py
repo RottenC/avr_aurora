@@ -47,3 +47,26 @@ def test_hdd_activity_never_exceeds_max():
     for _ in range(200):
         sim.step(80)
         assert 0 <= sim.state.hdd_activity <= sim.config.hdd_max
+
+def test_pending_hdd_edge_cleared_by_restart():
+    sim = Simulation()
+    sim.inputs.manual_hdd_led = True
+    sim.step(5)
+    assert sim._pending_edge_count == 1
+    sim.inputs.manual_hdd_led = False
+    sim.restart()
+    sim.step(10)
+    assert sim.state.hdd_activity == 0
+
+
+def test_manual_and_generated_hdd_state_are_separate():
+    sim = Simulation()
+    assert sim.inputs.manual_hdd_led is False
+    sim.set_hdd_mode(HddMode.HEAVY)
+    sim.generator.params.activity_rate = 100
+    sim.step(20)
+    assert sim.state.raw_hdd_led is True
+    sim.set_hdd_mode(HddMode.MANUAL)
+    sim.step(20)
+    assert sim.inputs.manual_hdd_led is False
+    assert sim.state.raw_hdd_led is False
