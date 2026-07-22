@@ -53,3 +53,62 @@ def test_simulation_large_power_led_step_matches_small_steps():
         for _ in range(12000 // step): sim.step(step)
         return sim.state.raw_power_led, sim.state.power_led_mode, sim.power_led_tracker.blink_edges
     assert len({run(step) for step in (5, 20, 80, 400)}) == 1
+
+def transition_list(gen, dt=5, manual=False):
+    raw, transitions = gen.update(dt, manual)
+    return raw, [(t.offset_ms, t.active) for t in transitions]
+
+
+def test_source_mode_transitions_are_timestamped_at_zero():
+    gen = PowerLedGenerator(PowerLedSourceMode.OFF)
+    gen.update(10, False)
+    gen.set_mode(PowerLedSourceMode.BLINKING)
+    assert transition_list(gen) == (False, [])
+
+    gen = PowerLedGenerator(PowerLedSourceMode.ON); gen.update(10, False)
+    gen.set_mode(PowerLedSourceMode.BLINKING)
+    assert transition_list(gen) == (False, [(0, False)])
+
+    gen = PowerLedGenerator(PowerLedSourceMode.MANUAL); gen.update(10, True)
+    gen.set_mode(PowerLedSourceMode.BLINKING)
+    assert transition_list(gen) == (False, [(0, False)])
+
+    gen = PowerLedGenerator(PowerLedSourceMode.BLINKING, 5); gen.update(5, False)
+    gen.set_mode(PowerLedSourceMode.ON)
+    assert transition_list(gen) == (True, [])
+
+    gen = PowerLedGenerator(PowerLedSourceMode.BLINKING, 5); gen.update(5, False)
+    gen.set_mode(PowerLedSourceMode.OFF)
+    assert transition_list(gen) == (False, [(0, False)])
+
+    gen = PowerLedGenerator(PowerLedSourceMode.BLINKING, 20); gen.update(5, False)
+    gen.set_mode(PowerLedSourceMode.MANUAL)
+    assert transition_list(gen, manual=True) == (True, [(0, True)])
+    gen.set_mode(PowerLedSourceMode.BLINKING); gen.update(5, False); gen.set_mode(PowerLedSourceMode.MANUAL)
+    assert transition_list(gen, manual=False) == (False, [])
+
+
+def test_same_power_mode_does_not_restart_phase_and_period_change_is_deterministic():
+    gen = PowerLedGenerator(PowerLedSourceMode.BLINKING, 150)
+    gen.update(100, False)
+    gen.set_mode(PowerLedSourceMode.BLINKING)
+    raw, transitions = gen.update(50, False)
+    assert raw is True and [(t.offset_ms, t.active) for t in transitions] == [(50, True)]
+    gen.set_half_period_ms(200)
+    assert transition_list(gen, 10) == (False, [(0, False)])
+
+
+def test_simulation_blinking_first_frame_initializes_tracker_at_start():
+    sim = Simulation(); sim.set_power_led_mode(PowerLedSourceMode.BLINKING); sim.set_power_led_half_period_ms(150)
+    sim.step(400)
+    assert sim.power_led_tracker.blink_edges == 2
+    assert sim.power_led_tracker.last_change_ms == 300
+
+
+def test_power_mode_change_equivalent_across_frame_sizes():
+    def scenario(step):
+        sim = Simulation(); sim.set_power_led_mode(PowerLedSourceMode.ON); sim.step(20)
+        sim.set_power_led_mode(PowerLedSourceMode.BLINKING)
+        for _ in range(400 // step): sim.step(step)
+        return sim.state.raw_power_led, sim.state.power_led_mode, sim.power_led_tracker.blink_edges, sim.power_led_tracker.last_change_ms
+    assert len({scenario(step) for step in (5, 20, 80, 400)}) == 1

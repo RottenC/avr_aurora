@@ -2,28 +2,28 @@ from time import perf_counter_ns
 from . import firmware_defaults as defaults
 from .diagnostics import Diagnostics
 from .avr_math import clamp_u8, div_trunc
-from .effect_controller import EffectController
+from .effect_controller import EffectController, EffectControllerConfig
 from .effects import AuroraPlaceholder, ForcedShutdownPlaceholder, OffEffect, ResetPlaceholder, ShutdownPlaceholder, SleepPlaceholder, StartupPlaceholder, WarnPlaceholder
 from .hdd_generator import HddGenerator, HddMode, HddParams, HddTransition
 from .input_edges import InputEdgeTracker
 from .model import FrameContext, InputState, LedBuffer, SimulationState, SimulatorConfig
-from .pc_state_machine import PcStateInputs, PcStateMachine
+from .pc_state_machine import PcStateConfig, PcStateInputs, PcStateMachine
 from .power_led_generator import PowerLedGenerator, PowerLedSourceMode, PowerLedTransition
-from .power_led_tracker import PowerLedTracker, PowerLedMode
+from .power_led_tracker import PowerLedTracker, PowerLedMode, PowerLedTrackerConfig
 from .state_types import PcState, Transition
 
 class Simulation:
-    def __init__(self):
-        self.config = SimulatorConfig()
+    def __init__(self, config: SimulatorConfig | None = None):
+        self.config = config or SimulatorConfig()
         self.inputs = InputState()
         self.state = SimulationState()
         self.diagnostics = Diagnostics()
         self.generator = HddGenerator(self.state.random_seed)
         self.power_led_generator = PowerLedGenerator()
-        self.power_led_tracker = PowerLedTracker()
+        self.power_led_tracker = PowerLedTracker(self._power_led_tracker_config())
         self.input_edges = InputEdgeTracker()
-        self.pc_state_machine = PcStateMachine()
-        self.effect_controller = EffectController()
+        self.pc_state_machine = PcStateMachine(self._pc_state_config())
+        self.effect_controller = EffectController(self._effect_controller_config())
         self.effects = {
             "Off": OffEffect(), "Aurora": AuroraPlaceholder(), "Startup": StartupPlaceholder(), "Shutdown": ShutdownPlaceholder(),
             "Reset": ResetPlaceholder(), "ForcedShutdown": ForcedShutdownPlaceholder(), "Sleep": SleepPlaceholder(), "Warn": WarnPlaceholder(),
@@ -44,16 +44,26 @@ class Simulation:
         config = SimulatorConfig(**vars(self.config))
         max_events = self.diagnostics.max_events
         override = self.render_override
-        self.__init__()
-        self.config = config; self.inputs = inputs; self.state = SimulationState(random_seed=seed)
+        self.__init__(config)
+        self.inputs = inputs; self.state = SimulationState(random_seed=seed)
         self.diagnostics = Diagnostics(strict=strict, max_events=max_events)
         self.generator = HddGenerator(seed, mode, params)
         self.power_led_generator = PowerLedGenerator(pwr_mode, pwr_half)
-        self.pc_state_machine = PcStateMachine()
-        self.effect_controller = EffectController()
+        self.power_led_tracker = PowerLedTracker(self._power_led_tracker_config())
+        self.pc_state_machine = PcStateMachine(self._pc_state_config())
+        self.effect_controller = EffectController(self._effect_controller_config())
         self.led_buffer = LedBuffer(self.diagnostics, self.config.led_count)
         self._pending_edge_count = 0
         self.render_override = override
+
+    def _power_led_tracker_config(self) -> PowerLedTrackerConfig:
+        return PowerLedTrackerConfig(self.config.short_power_led_off_ignore_ms, self.config.power_led_blink_min_half_period_ms, self.config.power_led_blink_max_half_period_ms, self.config.power_led_blink_stale_ms, self.config.power_led_blink_edges_required)
+
+    def _pc_state_config(self) -> PcStateConfig:
+        return PcStateConfig(self.config.power_hold_forced_ms, self.config.starting_timeout_ms, self.config.shutdown_warning_timeout_ms)
+
+    def _effect_controller_config(self) -> EffectControllerConfig:
+        return EffectControllerConfig(self.config.startup_duration_ms, self.config.shutdown_duration_ms, self.config.reset_duration_ms)
 
     def context(self, dt_ms: int = 0, transition: Transition | None = None, started_at: int | None = None, progress: int | None = None) -> FrameContext:
         current = self.effect_controller.current if transition is None else transition
@@ -75,17 +85,20 @@ class Simulation:
         self.generator.set_params(params)
 
     def set_power_led_mode(self, mode: PowerLedSourceMode) -> None:
-        self.power_led_generator.mode = mode
+        self.power_led_generator.set_mode(mode)
+
+    def set_power_led_half_period_ms(self, value: int) -> None:
+        self.power_led_generator.set_half_period_ms(value)
 
     def restart_preview(self) -> None:
         self.state.preview_started_at_ms = self.state.now_ms
 
     def preview_duration_ms(self) -> int:
         effect = self._override_transition()
-        if effect is Transition.STARTUP: return defaults.STARTUP_DURATION_MS
-        if effect is Transition.SHUTDOWN: return defaults.SHUTDOWN_DURATION_MS
-        if effect is Transition.RESET: return defaults.RESET_DURATION_MS
-        if effect is Transition.FORCED_SHUTDOWN: return defaults.POWER_HOLD_FORCED_MS
+        if effect is Transition.STARTUP: return self.config.startup_duration_ms
+        if effect is Transition.SHUTDOWN: return self.config.shutdown_duration_ms
+        if effect is Transition.RESET: return self.config.reset_duration_ms
+        if effect is Transition.FORCED_SHUTDOWN: return self.config.power_hold_forced_ms
         return 0
 
     def preview_elapsed_ms(self) -> int:
@@ -104,8 +117,9 @@ class Simulation:
         self.state.frame_number += 1
         self.diagnostics.set_context(self.state.frame_number, self.state.now_ms)
 
+        frame_start_power_led = self.power_led_generator.raw
         final_power_led, power_transitions = self.power_led_generator.update(dt_ms, self.inputs.manual_power_led)
-        self._update_power_led_tracker(frame_start_ms, dt_ms, final_power_led, power_transitions)
+        self._update_power_led_tracker(frame_start_ms, dt_ms, frame_start_power_led, final_power_led, power_transitions)
         start_raw_hdd = self.state.raw_hdd_led
         raw_hdd, transitions = self.generator.update(dt_ms, self.inputs.manual_hdd_led)
         edges = self.input_edges.update(self.inputs.power_button, self.inputs.reset_button)
@@ -128,6 +142,7 @@ class Simulation:
         self.state.transition = self.effect_controller.current
 
         ctx = self.context(dt_ms)
+        self.state.last_context = ctx
         self._render(ctx)
         elapsed_ns = perf_counter_ns() - frame_start_ns
         self.last_frame_elapsed_ms = elapsed_ns / 1_000_000
@@ -138,7 +153,7 @@ class Simulation:
 
     def _visual_duration(self, transition: Transition) -> int:
         if transition is Transition.FORCED_SHUTDOWN:
-            return defaults.POWER_HOLD_FORCED_MS
+            return self.config.power_hold_forced_ms
         return self.effect_controller.duration(transition)
 
     def _visual_progress8(self, transition: Transition, elapsed_ms: int, duration_ms: int) -> int:
@@ -146,7 +161,8 @@ class Simulation:
             return 0
         return clamp_u8(div_trunc(min(elapsed_ms, duration_ms) * 255, duration_ms, self.diagnostics, "transition visual progress"), self.diagnostics, "transition visual progress clamp")
 
-    def _update_power_led_tracker(self, frame_start_ms: int, dt_ms: int, final_raw: bool, transitions: list[PowerLedTransition]) -> None:
+    def _update_power_led_tracker(self, frame_start_ms: int, dt_ms: int, start_raw: bool, final_raw: bool, transitions: list[PowerLedTransition]) -> None:
+        self.power_led_tracker.update(start_raw, frame_start_ms)
         for transition in transitions:
             self.power_led_tracker.update(transition.active, frame_start_ms + transition.offset_ms)
         self.power_led_tracker.update(final_raw, frame_start_ms + dt_ms)
