@@ -64,6 +64,25 @@ Diagnostics keep cumulative counters and a bounded retained event history. The U
 
 The timeline is a lightweight custom PySide6 widget, not Matplotlib. Its `timeline_model.py` retention classes are Qt-independent for headless unit testing. The widget uses time-based sampled retention, deterministic colors, and shows about the last 15 seconds of simulated time for raw Power LED, classified Power LED mode, raw HDD LED, smoothed HDD activity, PC state and active transition.
 
+
+## Test groups
+
+Core simulator tests are headless and do not install or import PySide6:
+
+```bash
+python -m pip install -r simulator/requirements-core.txt
+PYTHONPATH=simulator python -m pytest -q simulator/tests/core
+```
+
+GUI smoke tests are intentionally small and run separately with Qt offscreen mode:
+
+```bash
+python -m pip install -r simulator/requirements-gui.txt
+QT_QPA_PLATFORM=offscreen PYTHONPATH=simulator python -m pytest -q simulator/tests/gui
+```
+
+Pull requests run both groups: core tests validate the firmware-like simulator model without Qt, and GUI smoke tests validate that the PySide6 workbench can construct, process one event cycle, refresh widgets and close. Qt is loaded only by GUI modules or when launching the desktop application with `run.cmd` / `run.sh`.
+
 ## Adding an effect
 
 Create an `Effect` implementation with `reset(context)` and `render(context, leds, diagnostics)`. Use ordinary Python integers, fixed-size lists/buffers, `LedBuffer` writes, `FrameContext.now_ms`, `started_at_ms`/progress values and helpers from `avr_math.py`. Keep effect logic deterministic for the same seed and avoid floating-point calculations inside rendering.

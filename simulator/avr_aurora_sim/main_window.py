@@ -4,7 +4,8 @@ from .hdd_generator import HddMode, HddParams
 from .led_canvas import LedCanvas
 from .power_led_generator import PowerLedSourceMode
 from .simulation import Simulation
-from .timeline import TimelineSample, TimelineWidget
+from .timeline_model import TimelineSample
+from .timeline_widget import TimelineWidget
 
 RENDER_MODES = ["Auto", "Force Aurora", "Force Startup", "Force Shutdown", "Force Reset", "Force ForcedShutdown", "Force Sleep", "Force Warn", "Force Off"]
 
