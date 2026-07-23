@@ -1,5 +1,4 @@
 from .base import Effect
-from .. import firmware_defaults as defaults
 from ..avr_math import clamp_u8, div_trunc, qadd8, scale8, u8
 from ..state_types import Transition
 
@@ -36,13 +35,15 @@ class ResetPlaceholder(Effect):
 
 class ForcedShutdownPlaceholder(Effect):
     def render(self, context, leds, diagnostics):
-        elapsed = min(context.transition_elapsed_ms, context.transition_duration_ms)
-        if elapsed <= defaults.FORCED_FLASH_AT_MS:
-            ramp = div_trunc(elapsed * 255, defaults.FORCED_FLASH_AT_MS, diagnostics, "forced rise")
+        duration = max(1, context.transition_duration_ms)
+        flash_at = max(1, min(context.forced_flash_at_ms, duration))
+        elapsed = min(context.transition_elapsed_ms, duration)
+        if elapsed <= flash_at:
+            ramp = div_trunc(elapsed * 255, flash_at, diagnostics, "forced rise")
             red = qadd8(10, scale8(ramp, 150, diagnostics, "forced rise red"), diagnostics, "forced rise boost")
         else:
-            remaining = context.transition_duration_ms - elapsed
-            fall_duration = context.transition_duration_ms - defaults.FORCED_FLASH_AT_MS
+            remaining = duration - elapsed
+            fall_duration = max(1, duration - flash_at)
             ramp = div_trunc(max(0, remaining) * 255, fall_duration, diagnostics, "forced fall")
             red = scale8(ramp, 160, diagnostics, "forced fall red")
         red = clamp_u8(red, diagnostics, "forced red clamp")

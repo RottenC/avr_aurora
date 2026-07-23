@@ -15,10 +15,11 @@ class TimelineSample:
     transition: str
 
 class TimelineHistory:
-    def __init__(self, window_ms: int = 15000, bucket_ms: int = 20) -> None:
+    def __init__(self, window_ms: int = 15000, bucket_ms: int = 20, max_samples: int | None = None) -> None:
         self.window_ms = window_ms
         self.bucket_ms = bucket_ms
-        self.samples = deque()
+        self.max_samples = max_samples or max(128, (window_ms // max(1, bucket_ms)) + 64)
+        self.samples = deque(maxlen=self.max_samples)
         self._last_sample: TimelineSample | None = None
 
     def clear(self) -> None:

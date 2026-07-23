@@ -67,3 +67,17 @@ The timeline is a lightweight custom PySide6 widget, not Matplotlib. It uses tim
 ## Adding an effect
 
 Create an `Effect` implementation with `reset(context)` and `render(context, leds, diagnostics)`. Use ordinary Python integers, fixed-size lists/buffers, `LedBuffer` writes, `FrameContext.now_ms`, `started_at_ms`/progress values and helpers from `avr_math.py`. Keep effect logic deterministic for the same seed and avoid floating-point calculations inside rendering.
+
+## Final workbench cleanup notes
+
+Power LED source changes are treated as workbench configuration reconciliation, not as physical blink edges. Reconciliation is emitted at `offset_ms = 0` on the next simulation update, coalesces multiple pending mode/period changes to the final selected source, and rebases the tracker without incrementing blink-edge accumulation. Manual checkbox changes while already in Manual mode remain normal observed raw transitions.
+
+Restart releases the momentary Power and Reset buttons to avoid synthetic press events on the first post-restart frame. Persistent controls such as manual LED checkboxes, strip power, source modes, seed, strict mode, FPS/configuration and preview selection remain preserved.
+
+The simulator stores two contexts after each frame: the control context produced by the state machine/effect controller, and the render context actually passed to the selected effect. In Auto they are equivalent; in forced preview the control context remains real while the render context reflects the preview transition and progress.
+
+Forced-shutdown visual timing is configurable through `SimulatorConfig.power_hold_forced_ms` and `SimulatorConfig.forced_flash_at_ms`. The flash point is clamped to the hold duration so shorter custom timings remain safe.
+
+Diagnostics expose a monotonic revision counter in addition to bounded retained events and cumulative counters. UI consumers use the revision so tables keep updating after the event deque is full.
+
+Timeline retention is primarily time-based and keeps approximately the last 15 seconds of simulated time, with a defensive absolute sample cap so repeated zero-duration/state-change samples cannot grow memory without bound.
