@@ -62,7 +62,7 @@ Forced preview modes (`Force Aurora`, `Force Startup`, `Force Shutdown`, `Force 
 
 Diagnostics keep cumulative counters and a bounded retained event history. The UI shows both a counter summary and a throttled newest-first table with time, frame, operation, label, inputs and result. Strict mode raises for unexpected invalid LED indices/RGB/ranges while intentional wrapping, saturation and explicit clamps remain recorded and allowed.
 
-The timeline is a lightweight custom PySide6 widget, not Matplotlib. It uses time-based sampled retention, deterministic colors, and shows about the last 15 seconds of simulated time for raw Power LED, classified Power LED mode, raw HDD LED, smoothed HDD activity, PC state and active transition.
+The timeline is a lightweight custom PySide6 widget, not Matplotlib. Its `timeline_model.py` retention classes are Qt-independent for headless unit testing. The widget uses time-based sampled retention, deterministic colors, and shows about the last 15 seconds of simulated time for raw Power LED, classified Power LED mode, raw HDD LED, smoothed HDD activity, PC state and active transition.
 
 ## Adding an effect
 
