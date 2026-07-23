@@ -1,6 +1,4 @@
-import pytest
-pytest.importorskip("PySide6")
-from avr_aurora_sim.timeline import TimelineHistory, TimelineSample
+from avr_aurora_sim.timeline_model import TimelineHistory, TimelineSample
 
 
 def sample(t, state="Running", transition="None"):
@@ -31,3 +29,10 @@ def test_timeline_has_absolute_sample_bound_at_same_timestamp():
         history.add_sample(sample(100, states[i % 2]))
     assert len(history.samples) == 32
     assert history.samples[0].now_ms == 100
+
+
+def test_timeline_model_has_no_pyside_dependency():
+    import sys
+    import avr_aurora_sim.timeline_model  # noqa: F401
+    assert "PySide6.QtGui" not in sys.modules
+    assert "PySide6.QtWidgets" not in sys.modules
