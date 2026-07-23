@@ -1,41 +1,10 @@
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import QWidget
+"""Compatibility imports for the Qt timeline widget layer.
 
+Core code should import TimelineHistory and TimelineSample from timeline_model
+so importing core modules never loads PySide6. Importing this module is a GUI
+operation and may load Qt through timeline_widget.
+"""
 from .timeline_model import TimelineHistory, TimelineSample
+from .timeline_widget import TimelineWidget
 
-class TimelineWidget(QWidget):
-    PC_COLORS = {"Off": QColor(30,30,30), "Starting": QColor(180,120,0), "Running": QColor(0,120,120), "Sleeping": QColor(0,40,120), "AwaitShutdown": QColor(120,80,0), "Warn": QColor(180,40,0)}
-    TRANSITION_COLORS = {"None": QColor(30,30,30), "Startup": QColor(200,120,0), "Shutdown": QColor(160,40,0), "Reset": QColor(200,200,200), "ForcedShutdown": QColor(200,0,0)}
-    def __init__(self, window_ms: int = 15000) -> None:
-        super().__init__(); self.history = TimelineHistory(window_ms); self.setMinimumHeight(150)
-
-    def clear(self) -> None:
-        self.history.clear(); self.update()
-
-    def add_sample(self, sample: TimelineSample) -> None:
-        if self.history.add_sample(sample): self.update()
-
-    @property
-    def samples(self): return self.history.samples
-    @property
-    def window_ms(self): return self.history.window_ms
-
-    def paintEvent(self, _):
-        painter = QPainter(self); painter.fillRect(self.rect(), Qt.black)
-        if not self.samples: return
-        labels = ["PWR raw", "PWR mode", "HDD raw", "HDD act", "PC", "Trans"]
-        row_h = max(18, self.height() // len(labels)); start = max(0, self.samples[-1].now_ms - self.window_ms); span = max(1, self.window_ms)
-        for row, label in enumerate(labels):
-            y = row * row_h; painter.setPen(Qt.gray); painter.drawText(2, y + 13, label); last_x = 70
-            for sample in self.samples:
-                x = 70 + int((sample.now_ms - start) * max(1, self.width() - 75) / span)
-                painter.fillRect(last_x, y + 2, max(1, x - last_x + 1), row_h - 4, self._color(row, sample)); last_x = x
-
-    def _color(self, row: int, sample: TimelineSample) -> QColor:
-        if row == 0: return QColor(0, 180, 0) if sample.raw_power_led else QColor(20, 40, 20)
-        if row == 1: return {"On": QColor(0, 160, 0), "Blinking": QColor(0, 120, 200), "Off": QColor(40, 40, 40)}[sample.power_led_mode]
-        if row == 2: return QColor(200, 200, 0) if sample.raw_hdd_led else QColor(40, 40, 20)
-        if row == 3: return QColor(min(255, sample.hdd_activity * 2), min(255, sample.hdd_activity * 2), 0)
-        if row == 4: return self.PC_COLORS.get(sample.pc_state, QColor(80,80,80))
-        return self.TRANSITION_COLORS.get(sample.transition, QColor(80,80,80))
+__all__ = ["TimelineHistory", "TimelineSample", "TimelineWidget"]

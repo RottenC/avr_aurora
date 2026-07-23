@@ -1,7 +1,5 @@
 import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-import pytest
-pytest.importorskip("PySide6")
 from PySide6.QtWidgets import QApplication, QScrollArea, QSplitter
 from avr_aurora_sim.hdd_generator import HddMode
 from avr_aurora_sim.main_window import MainWindow
