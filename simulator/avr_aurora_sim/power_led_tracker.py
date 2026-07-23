@@ -53,6 +53,18 @@ class PowerLedTracker:
             self.last = active
             self.last_change_ms = now_ms
 
+
+    def rebase(self, active: bool, now_ms: int) -> None:
+        active = bool(active)
+        self.initialized = True
+        self.last = active
+        self.last_change_ms = now_ms
+        self.blink_edges = 0
+        self.last_valid_blink_edge_ms = 0
+        if active:
+            self.seen_on = True
+            self.last_on_ms = now_ms
+
     def mode(self, now_ms: int) -> PowerLedMode:
         if self.blink_edges >= self.config.blink_edges_required and now_ms - self.last_valid_blink_edge_ms <= self.config.blink_stale_ms:
             return PowerLedMode.BLINKING

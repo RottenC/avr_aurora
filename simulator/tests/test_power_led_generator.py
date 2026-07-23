@@ -112,3 +112,48 @@ def test_power_mode_change_equivalent_across_frame_sizes():
         for _ in range(400 // step): sim.step(step)
         return sim.state.raw_power_led, sim.state.power_led_mode, sim.power_led_tracker.blink_edges, sim.power_led_tracker.last_change_ms
     assert len({scenario(step) for step in (5, 20, 80, 400)}) == 1
+
+def triples(transitions):
+    return [(t.offset_ms, t.active, t.is_reconciliation) for t in transitions]
+
+
+def test_coalesced_configuration_changes_do_not_emit_contradictory_zero_edges():
+    gen = PowerLedGenerator(PowerLedSourceMode.ON); gen.update(1, False)
+    gen.set_mode(PowerLedSourceMode.BLINKING); gen.set_mode(PowerLedSourceMode.ON)
+    assert triples(gen.update(10, False)[1]) == []
+
+    gen = PowerLedGenerator(PowerLedSourceMode.ON); gen.update(1, False)
+    gen.set_mode(PowerLedSourceMode.BLINKING); gen.set_mode(PowerLedSourceMode.MANUAL)
+    assert triples(gen.update(10, True)[1]) == []
+    gen = PowerLedGenerator(PowerLedSourceMode.ON); gen.update(1, False)
+    gen.set_mode(PowerLedSourceMode.BLINKING); gen.set_mode(PowerLedSourceMode.MANUAL)
+    assert triples(gen.update(10, False)[1]) == [(0, False, True)]
+
+    gen = PowerLedGenerator(PowerLedSourceMode.BLINKING, 5); gen.update(5, False)
+    gen.set_mode(PowerLedSourceMode.OFF); gen.set_mode(PowerLedSourceMode.ON)
+    assert triples(gen.update(10, False)[1]) == []
+
+
+def test_multiple_period_changes_coalesce_to_final_period():
+    gen = PowerLedGenerator(PowerLedSourceMode.BLINKING, 150)
+    gen.update(150, False)  # raw HIGH
+    gen.set_half_period_ms(200); gen.set_half_period_ms(300)
+    raw, transitions = gen.update(299, False)
+    assert raw is False
+    assert triples(transitions) == [(0, False, True)]
+    raw, transitions = gen.update(1, False)
+    assert raw is True
+    assert triples(transitions) == [(1, True, False)]
+
+
+def test_reconciliation_is_rebased_not_counted_as_blink_edge():
+    def scenario(step, steady_ms):
+        sim = Simulation(); sim.set_power_led_mode(PowerLedSourceMode.ON)
+        for _ in range(steady_ms // step): sim.step(step)
+        sim.set_power_led_mode(PowerLedSourceMode.BLINKING); sim.set_power_led_half_period_ms(150)
+        sim.step(step)
+        after_rebase = sim.power_led_tracker.blink_edges
+        for _ in range(150 // step): sim.step(step)
+        return after_rebase, sim.power_led_tracker.blink_edges
+    for steady in (500, 2000):
+        assert {scenario(step, steady) for step in (5, 10, 50)} == {(0, 1)}

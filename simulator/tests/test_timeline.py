@@ -21,3 +21,11 @@ def test_timeline_keeps_immediate_state_changes_and_clears():
     history.add_sample(sample(0, "Off")); history.add_sample(sample(5, "Running"))
     assert [s.pc_state for s in history.samples] == ["Off", "Running"]
     history.clear(); assert len(history.samples) == 0
+
+def test_timeline_has_absolute_sample_bound_at_same_timestamp():
+    history = TimelineHistory(window_ms=15000, bucket_ms=20, max_samples=32)
+    states = ["Off", "Running"]
+    for i in range(1000):
+        history.add_sample(sample(100, states[i % 2]))
+    assert len(history.samples) == 32
+    assert history.samples[0].now_ms == 100

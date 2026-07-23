@@ -42,3 +42,11 @@ def test_control_plane_frame_size_equivalence_for_simple_inputs():
         for _ in range(100 // step): sim.step(step)
         return sim.pc_state_machine.state, sim.effect_controller.current
     assert scenario(5) == scenario(20)
+
+def test_restart_releases_momentary_buttons_without_synthetic_events():
+    sim = Simulation(); sim.inputs.power_button = True; sim.inputs.reset_button = True
+    sim.restart()
+    assert not sim.inputs.power_button and not sim.inputs.reset_button
+    sim.step(20)
+    assert sim.effect_controller.current is Transition.NONE
+    assert sim.pc_state_machine.state is PcState.OFF

@@ -41,6 +41,8 @@ class Simulation:
         pwr_mode = self.power_led_generator.mode
         pwr_half = self.power_led_generator.half_period_ms
         inputs = InputState(**vars(self.inputs))
+        inputs.power_button = False
+        inputs.reset_button = False
         config = SimulatorConfig(**vars(self.config))
         max_events = self.diagnostics.max_events
         override = self.render_override
@@ -75,7 +77,7 @@ class Simulation:
             self.state.now_ms, dt_ms, self.state.frame_number, self.pc_state_machine.state, current,
             self.inputs.power_button, self.inputs.reset_button, self.inputs.manual_power_led, self.inputs.manual_hdd_led,
             self.state.raw_power_led, self.state.power_led_mode, self.state.raw_hdd_led, self.inputs.strip_power, self.state.hdd_activity,
-            start, elapsed, duration, prog, self.preview_elapsed_ms(), self.preview_duration_ms(), self.preview_progress8()
+            start, elapsed, duration, prog, self.preview_elapsed_ms(), self.preview_duration_ms(), self.preview_progress8(), min(self.config.forced_flash_at_ms, self.config.power_hold_forced_ms)
         )
 
     def set_hdd_mode(self, mode: HddMode) -> None:
@@ -142,8 +144,10 @@ class Simulation:
         self.state.transition = self.effect_controller.current
 
         ctx = self.context(dt_ms)
-        self.state.last_context = ctx
-        self._render(ctx)
+        self.state.last_control_context = ctx
+        render_ctx = self._render_context(ctx)
+        self.state.last_render_context = render_ctx
+        self._render(render_ctx)
         elapsed_ns = perf_counter_ns() - frame_start_ns
         self.last_frame_elapsed_ms = elapsed_ns / 1_000_000
         budget_ms = self.config.frame_interval_ms if real_budget_ms is None else real_budget_ms
@@ -164,18 +168,24 @@ class Simulation:
     def _update_power_led_tracker(self, frame_start_ms: int, dt_ms: int, start_raw: bool, final_raw: bool, transitions: list[PowerLedTransition]) -> None:
         self.power_led_tracker.update(start_raw, frame_start_ms)
         for transition in transitions:
-            self.power_led_tracker.update(transition.active, frame_start_ms + transition.offset_ms)
+            timestamp = frame_start_ms + transition.offset_ms
+            if transition.is_reconciliation:
+                self.power_led_tracker.rebase(transition.active, timestamp)
+            else:
+                self.power_led_tracker.update(transition.active, timestamp)
         self.power_led_tracker.update(final_raw, frame_start_ms + dt_ms)
         self.state.raw_power_led = final_raw
         self.state.power_led_mode = self.power_led_tracker.mode(self.state.now_ms)
 
-    def _render(self, ctx: FrameContext) -> None:
+    def _render_context(self, ctx: FrameContext) -> FrameContext:
+        return ctx if self.render_override == "Auto" else self._preview_context(ctx)
+
+    def _render(self, render_ctx: FrameContext) -> None:
         self.led_buffer.clear()
         if not self.inputs.strip_power:
             return
-        key = self._selected_effect_key(ctx)
-        effect_ctx = ctx if self.render_override == "Auto" else self._preview_context(ctx)
-        self.effects[key].render(effect_ctx, self.led_buffer, self.diagnostics)
+        key = self._selected_effect_key(render_ctx)
+        self.effects[key].render(render_ctx, self.led_buffer, self.diagnostics)
 
     def _selected_effect_key(self, ctx: FrameContext) -> str:
         if self.render_override != "Auto":

@@ -15,3 +15,19 @@ def test_simulation_events_have_current_frame_context():
     event = next(event for event in sim.diagnostics.events if event.operation == "clamped_value")
     assert event.frame_number == sim.state.frame_number
     assert event.now_ms == sim.state.now_ms
+
+def test_revision_advances_after_deque_saturation_and_clear():
+    diagnostics = Diagnostics(max_events=5)
+    seen = []
+    for i in range(diagnostics.max_events + 100):
+        before = diagnostics.revision
+        diagnostics.record("event", (i,), i)
+        assert diagnostics.revision == before + 1
+        seen.append(diagnostics.revision)
+    assert len(set(seen)) == diagnostics.max_events + 100
+    assert len(diagnostics.events) == diagnostics.max_events
+    assert diagnostics.counters["event"] == diagnostics.max_events + 100
+    clear_revision = diagnostics.revision
+    diagnostics.clear()
+    assert diagnostics.revision == clear_revision + 1
+    assert len(diagnostics.events) == 0

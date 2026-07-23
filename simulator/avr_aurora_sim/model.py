@@ -14,6 +14,7 @@ class SimulatorConfig:
     frame_interval_ms: int = defaults.FRAME_INTERVAL_MS
     target_fps: int = 1000 // defaults.FRAME_INTERVAL_MS
     power_hold_forced_ms: int = defaults.POWER_HOLD_FORCED_MS
+    forced_flash_at_ms: int = defaults.FORCED_FLASH_AT_MS
     hdd_update_ms: int = defaults.HDD_UPDATE_MS
     hdd_edge_boost: int = defaults.HDD_EDGE_BOOST
     hdd_active_rise: int = defaults.HDD_ACTIVE_RISE
@@ -61,6 +62,7 @@ class FrameContext:
     preview_elapsed_ms: int = 0
     preview_duration_ms: int = 0
     preview_progress: int = 0
+    forced_flash_at_ms: int = defaults.FORCED_FLASH_AT_MS
 
 class LedBuffer:
     def __init__(self, diagnostics: Diagnostics, count: int = LED_COUNT, label: str = "led buffer") -> None:
@@ -105,4 +107,5 @@ class SimulationState:
     preview_started_at_ms: int = 0
     power_hold_ms: int = 0
     random_seed: int = 1
-    last_context: FrameContext | None = None
+    last_control_context: FrameContext | None = None
+    last_render_context: FrameContext | None = None

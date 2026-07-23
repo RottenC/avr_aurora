@@ -16,3 +16,22 @@ def test_custom_config_propagates_to_subsystems_and_restart():
     sim.restart()
     assert sim.config.frame_interval_ms == 25
     assert sim.pc_state_machine.config.shutdown_warning_timeout_ms == 555
+from avr_aurora_sim.effects.placeholder import ForcedShutdownPlaceholder
+from avr_aurora_sim.model import LedBuffer
+from avr_aurora_sim.diagnostics import Diagnostics
+from avr_aurora_sim.state_types import Transition
+
+
+def test_custom_forced_timing_hdd_max_and_led_count():
+    config = SimulatorConfig(power_hold_forced_ms=1000, forced_flash_at_ms=400, hdd_max=64, led_count=20)
+    sim = Simulation(config)
+    assert len(sim.led_buffer) == 20
+    sim.render_override = "Force ForcedShutdown"; sim.restart_preview(); sim.step(500)
+    ctx = sim.state.last_render_context
+    assert ctx.transition is Transition.FORCED_SHUTDOWN
+    assert ctx.transition_duration_ms == 1000
+    assert ctx.forced_flash_at_ms == 400
+    assert ctx.transition_progress == 127
+    buffer = LedBuffer(Diagnostics(), count=20)
+    ForcedShutdownPlaceholder().render(ctx, buffer, Diagnostics())
+    assert len(buffer.to_list()) == 20

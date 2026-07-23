@@ -54,3 +54,14 @@ def test_forced_decision_equivalent_for_frame_sizes():
         for _ in range(defaults.POWER_HOLD_FORCED_MS // step): sim.step(step)
         ctx = sim.context(); return sim.pc_state_machine.forced_latched, ctx.transition_progress
     assert scenario(5) == scenario(20) == scenario(80) == (True, 255)
+
+def test_preview_has_separate_control_and_render_contexts():
+    sim = running_sim()
+    sim.render_override = "Force Shutdown"; sim.restart_preview(); sim.step(20)
+    assert sim.state.last_control_context.transition is Transition.NONE
+    assert sim.state.last_render_context.transition is Transition.SHUTDOWN
+    assert sim.effect_controller.current is Transition.NONE
+    sim.render_override = "Force ForcedShutdown"; sim.restart_preview(); sim.step(defaults.POWER_HOLD_FORCED_MS // 2)
+    assert sim.state.last_control_context.transition is Transition.NONE
+    assert sim.state.last_render_context.transition is Transition.FORCED_SHUTDOWN
+    assert sim.state.last_render_context.transition_progress == 127

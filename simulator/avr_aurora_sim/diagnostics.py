@@ -23,6 +23,7 @@ class Diagnostics:
     frame_number: int = 0
     now_ms: int = 0
     counters: Counter = field(default_factory=Counter)
+    revision: int = 0
     events: Deque[DiagnosticEvent] = field(init=False)
 
     def __post_init__(self) -> None:
@@ -36,9 +37,11 @@ class Diagnostics:
         self.counters[operation] += 1
         event = DiagnosticEvent(operation, tuple(inputs), result, label, self.frame_number, self.now_ms)
         self.events.append(event)
+        self.revision += 1
         if self.strict and strict_error:
             raise StrictDiagnosticError(f"{operation}: inputs={event.inputs} result={result} label={label}")
 
     def clear(self) -> None:
         self.counters.clear()
         self.events.clear()
+        self.revision += 1
