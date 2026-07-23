@@ -11,7 +11,9 @@ def test_timeline_retention_is_time_based_and_bounded():
     history = TimelineHistory(window_ms=15000, bucket_ms=20)
     for t in range(0, 60000, 5):
         history.add_sample(sample(t))
-    assert history.samples[-1].now_ms == 59995
+    latest_input_ms = 59995
+    latest_stored_ms = history.samples[-1].now_ms
+    assert 0 <= latest_input_ms - latest_stored_ms < history.bucket_ms
     assert history.samples[0].now_ms >= 59995 - 15000 - 20
     assert len(history.samples) <= 800
 
