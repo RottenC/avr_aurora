@@ -11,6 +11,8 @@
   - LED 55: rear-right.
 - Controller power: PC 5V standby rail.
 - LED strip power: main PSU Molex 5 V.
+- Keep A0 unconnected; firmware samples it together with `micros()` once at
+  startup to seed the Aurora PRNG.
 - Add a `strip_power_present` sensing input. When strip power is absent, firmware must not drive the WS2812 data line.
 - FastLED hard current limit: 2000 mA at 5 V.
 - Recommended electrical protection: 330–470 ohm series resistor on data; power injection at both strip ends.

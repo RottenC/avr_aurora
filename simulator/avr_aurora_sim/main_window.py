@@ -1,5 +1,6 @@
 from PySide6.QtCore import QSignalBlocker, QTimer, Qt
 from PySide6.QtWidgets import *
+from .aurora_field_chart import AuroraFieldChart
 from .hdd_generator import HddMode, HddParams
 from .led_canvas import LedCanvas
 from .power_led_generator import PowerLedSourceMode
@@ -38,14 +39,21 @@ class MainWindow(QMainWindow):
         self.speedbox = QComboBox(); self.speedbox.addItems(["0.25x", "1x", "4x"]); self.speedbox.setCurrentText("1x"); self.speedbox.currentTextChanged.connect(lambda text: setattr(self, "speed", float(text[:-1]))); left.addWidget(self.speedbox)
         self.fps = QSpinBox(); self.fps.setRange(1, 200); self.fps.setValue(50); self.fps.setSuffix(" FPS"); self.fps.valueChanged.connect(self._fps_changed); left.addWidget(self.fps)
         self.indices = QCheckBox("Show LED indices"); self.indices.toggled.connect(self._indices); left.addWidget(self.indices)
+        self.show_physical = QCheckBox("Show U-shaped layout"); self.show_physical.toggled.connect(self._toggle_physical); left.addWidget(self.show_physical)
         self.strict = QCheckBox("Strict mode"); self.strict.toggled.connect(lambda value: setattr(self.sim.diagnostics, "strict", value)); left.addWidget(self.strict)
         self.filter = QLineEdit(); self.filter.setPlaceholderText("Diagnostic operation filter"); self.filter.textChanged.connect(self._filter_changed); left.addWidget(self.filter)
         clear = QPushButton("Clear diagnostics"); clear.clicked.connect(self._clear_diagnostics); left.addWidget(clear); left.addStretch()
 
         views = QSplitter(Qt.Vertical); right.addWidget(views)
-        led_box = QWidget(); led_layout = QVBoxLayout(led_box); self.linear = LedCanvas(False); self.physical = LedCanvas(True); led_layout.addWidget(QLabel("Linear 0..55")); led_layout.addWidget(self.linear); led_layout.addWidget(QLabel("Physical U-shaped layout")); led_layout.addWidget(self.physical); views.addWidget(led_box)
+        led_box = QWidget(); led_layout = QVBoxLayout(led_box); self.linear = LedCanvas(False); self.field_chart = AuroraFieldChart()
+        field_scroll = QScrollArea(); field_scroll.setWidgetResizable(True); field_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff); field_scroll.setWidget(self.field_chart); field_scroll.setMinimumHeight(self.field_chart.minimumHeight() + 20)
+        led_layout.addWidget(QLabel("Linear 0..55")); led_layout.addWidget(self.linear); led_layout.addWidget(QLabel("Aurora field — brightness (B) / color progress (P)")); led_layout.addWidget(field_scroll); views.addWidget(led_box)
         self.timeline = TimelineWidget(); views.addWidget(self.timeline)
         lower = QSplitter(Qt.Vertical); self.status = QLabel(); self.status.setAlignment(Qt.AlignTop); lower.addWidget(self.status); self.diag_table = QTableWidget(0, 6); self.diag_table.setHorizontalHeaderLabels(["time", "frame", "operation", "label", "inputs", "result"]); lower.addWidget(self.diag_table); views.addWidget(lower)
+
+        self.physical_panel = QGroupBox("Physical U-shaped layout")
+        physical_layout = QVBoxLayout(self.physical_panel); self.physical = LedCanvas(True); physical_layout.addWidget(self.physical)
+        self.physical_panel.setMinimumWidth(320); splitter.addWidget(self.physical_panel); self.physical_panel.hide()
 
         self.timer = QTimer(self); self.timer.timeout.connect(lambda: self._tick(False)); self.timer.start(self.sim.config.frame_interval_ms)
         self.diag_timer = QTimer(self); self.diag_timer.timeout.connect(self._refresh_diagnostics_if_needed); self.diag_timer.start(200)
@@ -57,12 +65,13 @@ class MainWindow(QMainWindow):
     def _power_source_changed(self, text): self.sim.set_power_led_mode(PowerLedSourceMode(text)); self.power_led.setEnabled(PowerLedSourceMode(text) is PowerLedSourceMode.MANUAL)
     def _power_half_changed(self, value): self.sim.set_power_led_half_period_ms(value)
     def _mode_changed(self, text): self.sim.set_hdd_mode(HddMode(text)); self._sync_param_controls(); self.hdd_led.setEnabled(HddMode(text) is HddMode.MANUAL)
-    def _seed_changed(self, value): self.sim.state.random_seed = value; self.sim.generator.reset(value)
+    def _seed_changed(self, value): self.sim.set_random_seed(value)
     def _params_changed(self): self.sim.set_hdd_params(HddParams(self.activity_rate.value(), self.pulse_duration.value(), self.burst_size.value(), self.randomness.value()))
     def _render_mode_changed(self, text): self.sim.render_override = text; self.sim.restart_preview()
     def _fps_changed(self, fps): interval = max(1, round(1000 / fps)); self.sim.config.target_fps = fps; self.sim.config.frame_interval_ms = interval; self.timer.setInterval(interval)
     def _pause(self): self.paused = not self.paused; self.pause.setText("Resume" if self.paused else "Pause")
     def _indices(self, value): self.linear.show_indices = value; self.physical.show_indices = value; self.linear.update(); self.physical.update()
+    def _toggle_physical(self, value): self.physical_panel.setVisible(value)
     def _restart(self): self.sim.restart(); self.timeline.clear(); self._sync_controls_from_model(); self._refresh(); self._refresh_diagnostics(force=True)
     def _tick(self, force):
         if self.paused and not force: return
@@ -80,6 +89,7 @@ class MainWindow(QMainWindow):
         self.hdd_led.setEnabled(self.sim.generator.mode is HddMode.MANUAL); self.power_led.setEnabled(self.sim.power_led_generator.mode is PowerLedSourceMode.MANUAL)
     def _refresh(self):
         leds = self.sim.led_buffer.to_list() if self.sim.inputs.strip_power else [(0, 0, 0)] * self.sim.config.led_count; self.linear.set_leds(leds); self.physical.set_leds(leds)
+        aurora = self.sim.effects["Aurora"]; self.field_chart.set_field(aurora.brightness, aurora.color_progress, aurora.config.color_1, aurora.config.color_2)
         s = self.sim.state; i = self.sim.inputs; pc = self.sim.pc_state_machine; ec = self.sim.effect_controller; control_ctx = s.last_control_context or self.sim.context(); render_ctx = s.last_render_context or control_ctx
         self.raw_power.setText(f"Raw Power LED: {s.raw_power_led}"); self.raw_hdd.setText(f"Raw HDD LED: {s.raw_hdd_led}"); self.power.setText(f"Power hold: {pc.hold_duration(s.now_ms)/1000:.2f} / {self.sim.config.power_hold_forced_ms/1000:.2f} s")
         controller_lifetime = "indefinite" if ec.duration() == 0 and ec.current.value != "None" else f"{ec.duration()} ms"

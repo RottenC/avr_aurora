@@ -8,6 +8,24 @@
 #include "led_output.h"
 #include "serial_debug.h"
 
+namespace {
+
+uint32_t collectAuroraSeed() {
+  pinMode(Config::AuroraEntropyPin, INPUT);
+  digitalWrite(Config::AuroraEntropyPin, LOW);
+
+  uint32_t seed = micros() ^ Config::AuroraZeroSeedFallback;
+  for (uint8_t sampleIndex = 0; sampleIndex < 32; ++sampleIndex) {
+    const uint32_t sample = analogRead(Config::AuroraEntropyPin);
+    seed ^= sample << (sampleIndex & 0x0F);
+    seed ^= micros() + 0x9E3779B9UL + sampleIndex;
+    seed = Aurora::xorshift32(seed);
+  }
+  return seed == 0 ? Config::AuroraZeroSeedFallback : seed;
+}
+
+}  // namespace
+
 Inputs inputs;
 PowerLedTracker powerLed({Config::ShortPowerLedOffIgnoreMs,
                          Config::PowerLedBlinkMinHalfPeriodMs,
@@ -19,7 +37,9 @@ HddActivity hdd({Config::HddUpdateMs,
                  Config::HddActiveRise,
                  Config::HddInactiveDecay,
                  Config::HddMax});
-PcStateMachine pc({Config::PowerHoldForcedMs, Config::StartingTimeoutMs});
+PcStateMachine pc({Config::PowerHoldForcedMs,
+                   Config::StartingTimeoutMs,
+                   Config::ShutdownWarningTimeoutMs});
 EffectController effects({Config::StartupDurationMs,
                           Config::ShutdownDurationMs,
                           Config::ResetDurationMs});
@@ -30,7 +50,7 @@ uint32_t lastHddUpdateMs = 0;
 
 void setup() {
   inputs.begin();
-  ledOutput.begin();
+  ledOutput.begin(collectAuroraSeed());
   debug.begin();
   lastHddUpdateMs = millis();
 }

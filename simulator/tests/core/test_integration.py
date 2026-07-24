@@ -1,4 +1,5 @@
 from avr_aurora_sim.hdd_generator import HddMode
+from avr_aurora_sim.effects import AuroraFieldEffect
 from avr_aurora_sim.power_led_generator import PowerLedSourceMode
 from avr_aurora_sim.state_types import PcState, Transition
 from avr_aurora_sim.simulation import Simulation
@@ -50,3 +51,58 @@ def test_restart_releases_momentary_buttons_without_synthetic_events():
     sim.step(20)
     assert sim.effect_controller.current is Transition.NONE
     assert sim.pc_state_machine.state is PcState.OFF
+
+
+def test_aurora_selection_preview_strip_power_and_off_integration():
+    sim = Simulation()
+    assert isinstance(sim.effects["Aurora"], AuroraFieldEffect)
+
+    sim.power_led_generator.mode = PowerLedSourceMode.ON
+    sim.step(20)
+    assert sim.pc_state_machine.state is PcState.RUNNING
+    assert sim._active_effect_key == "Aurora"
+
+    control_state = sim.pc_state_machine.state
+    control_transition = sim.effect_controller.current
+    sim.render_override = "Force Aurora"
+    sim.restart_preview()
+    sim.step(20)
+    assert sim._active_effect_key == "Aurora"
+    assert sim.pc_state_machine.state is control_state
+    assert sim.effect_controller.current is control_transition
+
+    sim.inputs.strip_power = False
+    sim.step(20)
+    assert sim._active_effect_key is None
+    assert sim.led_buffer.to_list() == [(0, 0, 0)] * sim.config.led_count
+
+    off = Simulation()
+    off.step(20)
+    assert off._active_effect_key == "Off"
+    assert off.led_buffer.to_list() == [(0, 0, 0)] * off.config.led_count
+
+
+def test_aurora_preview_restart_restores_deterministic_initial_state():
+    sim = Simulation()
+    sim.render_override = "Force Aurora"
+    sim.restart_preview()
+    aurora = sim.effects["Aurora"]
+    initial = (
+        aurora.brightness,
+        aurora.color_progress,
+        aurora.ticks_until_next_spawn,
+        aurora.prng_state,
+        aurora.fixed_step_accumulator_ms,
+    )
+    for _ in range(50):
+        sim.step(20)
+    assert aurora.brightness != initial[0]
+
+    sim.restart_preview()
+    assert (
+        aurora.brightness,
+        aurora.color_progress,
+        aurora.ticks_until_next_spawn,
+        aurora.prng_state,
+        aurora.fixed_step_accumulator_ms,
+    ) == initial

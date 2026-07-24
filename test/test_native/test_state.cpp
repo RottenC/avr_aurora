@@ -6,6 +6,8 @@
 #include "pc_state.h"
 #include "power_led_tracker.h"
 
+void runAuroraTests();
+
 namespace {
 PcStateMachine makePcStateMachine() {
   return PcStateMachine({Config::PowerHoldForcedMs, Config::StartingTimeoutMs, Config::ShutdownWarningTimeoutMs});
@@ -488,5 +490,6 @@ int main(int, char **) {
   RUN_TEST(test_auto_26_startup_animation_finish_waits_for_power_led);
   RUN_TEST(test_auto_27_boot_running_and_sleeping_are_separate);
   RUN_TEST(test_auto_28_await_shutdown_timeout_and_off);
+  runAuroraTests();
   return UNITY_END();
 }

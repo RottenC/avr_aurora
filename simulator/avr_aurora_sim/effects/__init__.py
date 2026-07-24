@@ -1,8 +1,15 @@
+from .aurora_field import (
+    AuroraFieldConfig,
+    AuroraFieldEffect,
+    BACKGROUND_COLOR,
+    COLOR_1,
+    COLOR_2,
+    lerp_rgb,
+    lerp_u8,
+)
 from .placeholder import (
-    AuroraPlaceholder,
     ForcedShutdownPlaceholder,
     OffEffect,
-    PlaceholderEffect,
     ResetPlaceholder,
     ShutdownPlaceholder,
     SleepPlaceholder,

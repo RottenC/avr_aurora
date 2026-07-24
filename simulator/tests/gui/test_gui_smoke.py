@@ -11,6 +11,11 @@ def test_main_window_offscreen_smoke():
     window = MainWindow(); window.timer.stop(); window.diag_timer.stop(); window.show(); app.processEvents()
     assert window.findChild(QScrollArea) is not None
     assert window.findChild(QSplitter) is not None
+    assert not window.physical_panel.isVisible()
+    window.show_physical.setChecked(True); app.processEvents()
+    assert window.physical_panel.isVisible()
+    assert len(window.field_chart.brightness) == window.sim.config.led_count
+    assert len(window.field_chart.color_progress) == window.sim.config.led_count
     window._tick(True)
     window.power_source.setCurrentText(PowerLedSourceMode.BLINKING.value)
     window.power_blink_half.setValue(300)

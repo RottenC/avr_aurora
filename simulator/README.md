@@ -22,7 +22,17 @@ cd simulator
 
 ## Purpose and limitations
 
-The simulator mirrors observable inputs, 50 FPS / 20 ms frame timing, 56 LED geometry, HDD smoothing, Power LED classification, PC state transitions, transition priority and fixed-width arithmetic diagnostics. It does not bind or compile firmware C++, use Arduino/FastLED dependencies directly, include NumPy, implement final artistic effects, require networking, or require hardware.
+The simulator mirrors observable inputs, 50 FPS / 20 ms frame timing, 56 LED geometry, HDD smoothing, Power LED classification, PC state transitions, transition priority and fixed-width arithmetic diagnostics. It does not bind or compile firmware C++, use Arduino/FastLED dependencies directly, include NumPy, require networking, or require hardware.
+
+## Aurora field
+
+The normal ambient effect is a deterministic one-dimensional cellular field mirrored by the firmware's platform-independent AVR/C++ implementation. Its complete visual field is held in two fixed-size arrays: brightness and teal-to-purple color progress. Reused next-state buffers keep diffusion out of place without allocating a new 56-element list per frame; no particles, stars, flare objects, floating-point effect math, HSV conversion, or Python random module are used.
+
+The field advances only in fixed 20 ms ticks, independent of display FPS or simulator speed-step grouping. A portable `xorshift32` generator injects one to three maximum-brightness points at deterministic 20–70 tick intervals. Brightness then diffuses along the open LED chain with a normalized `1/65, 63/65, 1/65` kernel, overlapping contributions combine with saturation, and color progress travels with brightness through an integer weighted average. RGB composition linearly interpolates from `#1aba94` to `#6e347c`, then from the static dark-blue `#091e37` background to that flare color.
+
+Restarting the simulation or Aurora preview resets the buffers, fixed-step accumulator, spawn timer, and PRNG sequence. Switching away and back also restarts Aurora; it does not advance while another effect or a strip-power blackout is active.
+
+Future work includes color drift, HDD influence, alternative diffusion kernels, nonlinear color interpolation, and hardware calibration.
 
 ## AVR-like arithmetic
 
@@ -42,6 +52,13 @@ Exactly 56 LEDs are rendered in linear and physical views:
 - `23..32`: front side, left to right.
 - `33..55`: right side, front to rear.
 
+The physical U-shaped view lives in a separate right-hand panel and is enabled
+with **Show U-shaped layout**. Below the linear strip, the scrollable Aurora
+field chart shows one point per LED. Point height is the field brightness,
+point color is interpolated from `color_1` to `color_2` using color progress,
+and the exact brightness (`B`) and progress (`P`) values are printed below
+each point.
+
 Disable **Strip power** to black out the visualized strip without implying a PC power-state change.
 
 ## Raw/classified Power LED
@@ -54,9 +71,9 @@ The Manual HDD checkbox is separate from the observed raw HDD signal. Manual mod
 
 ## State-driven rendering and preview
 
-In **Auto** render mode, the PC state machine and effect controller select the placeholder renderer. Transition priority is `ForcedShutdown > Shutdown > Reset > Startup > None`. `ForcedShutdown` remains indefinite in the controller, but its placeholder visual progress uses the firmware 4000 ms forced-hold window. The state-machine and controller ports intentionally reproduce firmware control flow, but full electrical debounce and final polished visuals remain outside this phase.
+In **Auto** render mode, the PC state machine and effect controller select the renderer. Running uses the final-form Aurora field; other visuals remain placeholders. Transition priority is `ForcedShutdown > Shutdown > Reset > Startup > None`. `ForcedShutdown` remains indefinite in the controller, but its placeholder visual progress uses the firmware 4000 ms forced-hold window. The state-machine and controller ports intentionally reproduce firmware control flow, but full electrical debounce and the remaining polished visuals remain outside this phase.
 
-Forced preview modes (`Force Aurora`, `Force Startup`, `Force Shutdown`, `Force Reset`, `Force ForcedShutdown`, `Force Sleep`, `Force Warn`, `Force Off`) render the selected diagnostic placeholder without mutating PC state, Power LED tracking, the effect controller or inputs. Use **Restart preview** to reset preview elapsed/progress.
+Forced preview modes (`Force Aurora`, `Force Startup`, `Force Shutdown`, `Force Reset`, `Force ForcedShutdown`, `Force Sleep`, `Force Warn`, `Force Off`) render the selected effect without mutating PC state, Power LED tracking, the effect controller or inputs. Use **Restart preview** to reset preview elapsed/progress and stateful effect data.
 
 ## Diagnostics and timeline
 

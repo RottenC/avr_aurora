@@ -6,14 +6,6 @@ class OffEffect(Effect):
     def render(self, context, leds, diagnostics):
         leds.clear()
 
-class AuroraPlaceholder(Effect):
-    def render(self, context, leds, diagnostics):
-        phase = u8(div_trunc(context.now_ms, 20, diagnostics, "aurora phase") + scale8(context.hdd_activity, 32, diagnostics, "hdd speed"), diagnostics, "aurora phase wrap")
-        bright = qadd8(24, scale8(context.hdd_activity, 80, diagnostics, "hdd bright"), diagnostics, "aurora brightness")
-        for i in range(len(leds)):
-            wave = u8(i * 9 + phase, diagnostics, "aurora wave")
-            leds[i] = (0, scale8(255 - wave, bright, diagnostics, "aurora green"), scale8(wave, bright, diagnostics, "aurora blue"))
-
 class StartupPlaceholder(Effect):
     def render(self, context, leds, diagnostics):
         lit = div_trunc(len(leds) * context.transition_progress, 255, diagnostics, "startup lit")
@@ -65,6 +57,3 @@ class WarnPlaceholder(Effect):
         color = (180, 60, 0) if amber else (180, 0, 0)
         for i in range(len(leds)):
             leds[i] = color
-
-# Backward-compatible name for older imports/tests.
-PlaceholderEffect = AuroraPlaceholder

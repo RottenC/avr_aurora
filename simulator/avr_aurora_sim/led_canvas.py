@@ -14,5 +14,5 @@ class LedCanvas(QWidget):
         else:
             gap=max(10,(self.width()-20)/LED_COUNT); pts=[(10+i*gap,self.height()/2) for i in range(LED_COUNT)]
         for i,(x,y) in enumerate(pts):
-            p.setBrush(QColor(*self.leds[i])); p.drawEllipse(int(x)-5,int(y)-5,10,10)
+            p.setBrush(QColor(*self.leds[i])); p.drawEllipse(int(x)-10,int(y)-10,20,20)
             if self.show_indices: p.drawText(int(x)-8,int(y)-9,str(i))

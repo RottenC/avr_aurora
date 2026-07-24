@@ -3,17 +3,6 @@
 
 void renderBlack(CRGB *leds, uint8_t count){ fill_solid(leds, count, CRGB::Black); }
 
-void renderAurora(CRGB *leds, uint8_t count, uint32_t nowMs, uint8_t hddActivity){
-  const uint8_t normalizedActivity = qadd8(hddActivity, hddActivity);
-  const uint8_t speed = Config::AuroraBaseSpeed + (Config::AuroraHddAffectsSpeed ? hddActivity / 4 : 0);
-  const uint8_t bright = qadd8(Config::AuroraBaseBrightness,
-      Config::AuroraHddAffectsBrightness ? scale8(normalizedActivity, Config::AuroraHddBrightnessBoost) : 0);
-  for (uint8_t i=0;i<count;++i){
-    const uint8_t wave = sin8(i * 9 + (nowMs / 16) * speed / 16);
-    leds[i] = CHSV(96 + wave / 5, 190, scale8(wave, bright));
-  }
-}
-
 void renderSleep(CRGB *leds, uint8_t count, uint32_t nowMs){
   renderBlack(leds, count);
   const uint8_t p1 = (nowMs / 1700) % count;

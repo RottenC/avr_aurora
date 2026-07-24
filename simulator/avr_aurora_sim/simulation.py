@@ -1,9 +1,10 @@
+from dataclasses import replace
 from time import perf_counter_ns
 from . import firmware_defaults as defaults
 from .diagnostics import Diagnostics
 from .avr_math import clamp_u8, div_trunc
 from .effect_controller import EffectController, EffectControllerConfig
-from .effects import AuroraPlaceholder, ForcedShutdownPlaceholder, OffEffect, ResetPlaceholder, ShutdownPlaceholder, SleepPlaceholder, StartupPlaceholder, WarnPlaceholder
+from .effects import AuroraFieldConfig, AuroraFieldEffect, ForcedShutdownPlaceholder, OffEffect, ResetPlaceholder, ShutdownPlaceholder, SleepPlaceholder, StartupPlaceholder, WarnPlaceholder
 from .hdd_generator import HddGenerator, HddMode, HddParams, HddTransition
 from .input_edges import InputEdgeTracker
 from .model import FrameContext, InputState, LedBuffer, SimulationState, SimulatorConfig
@@ -24,14 +25,12 @@ class Simulation:
         self.input_edges = InputEdgeTracker()
         self.pc_state_machine = PcStateMachine(self._pc_state_config())
         self.effect_controller = EffectController(self._effect_controller_config())
-        self.effects = {
-            "Off": OffEffect(), "Aurora": AuroraPlaceholder(), "Startup": StartupPlaceholder(), "Shutdown": ShutdownPlaceholder(),
-            "Reset": ResetPlaceholder(), "ForcedShutdown": ForcedShutdownPlaceholder(), "Sleep": SleepPlaceholder(), "Warn": WarnPlaceholder(),
-        }
+        self.effects = self._create_effects(self.state.random_seed)
         self.led_buffer = LedBuffer(self.diagnostics, self.config.led_count)
         self.last_frame_elapsed_ms = 0.0
         self._pending_edge_count = 0
         self.render_override = "Auto"
+        self._active_effect_key: str | None = None
 
     def restart(self) -> None:
         seed = self.state.random_seed
@@ -55,8 +54,22 @@ class Simulation:
         self.pc_state_machine = PcStateMachine(self._pc_state_config())
         self.effect_controller = EffectController(self._effect_controller_config())
         self.led_buffer = LedBuffer(self.diagnostics, self.config.led_count)
+        self.effects = self._create_effects(seed)
         self._pending_edge_count = 0
         self.render_override = override
+        self._active_effect_key = None
+
+    def _create_effects(self, seed: int):
+        return {
+            "Off": OffEffect(),
+            "Aurora": AuroraFieldEffect(self.config.led_count, AuroraFieldConfig(seed=seed)),
+            "Startup": StartupPlaceholder(),
+            "Shutdown": ShutdownPlaceholder(),
+            "Reset": ResetPlaceholder(),
+            "ForcedShutdown": ForcedShutdownPlaceholder(),
+            "Sleep": SleepPlaceholder(),
+            "Warn": WarnPlaceholder(),
+        }
 
     def _power_led_tracker_config(self) -> PowerLedTrackerConfig:
         return PowerLedTrackerConfig(self.config.short_power_led_off_ignore_ms, self.config.power_led_blink_min_half_period_ms, self.config.power_led_blink_max_half_period_ms, self.config.power_led_blink_stale_ms, self.config.power_led_blink_edges_required)
@@ -92,8 +105,26 @@ class Simulation:
     def set_power_led_half_period_ms(self, value: int) -> None:
         self.power_led_generator.set_half_period_ms(value)
 
+    def set_random_seed(self, seed: int) -> None:
+        seed = int(seed) & 0xFFFFFFFF
+        self.state.random_seed = seed
+        self.generator.reset(seed)
+        self.effects["Aurora"] = AuroraFieldEffect(
+            self.config.led_count,
+            AuroraFieldConfig(seed=seed),
+        )
+        if self._active_effect_key == "Aurora":
+            self._active_effect_key = None
+
     def restart_preview(self) -> None:
         self.state.preview_started_at_ms = self.state.now_ms
+        self._active_effect_key = None
+        if self.render_override != "Auto":
+            preview_context = self._preview_context(self.context(0))
+            key = self._selected_effect_key(preview_context)
+            self.effects[key].reset(preview_context)
+            if self.inputs.strip_power:
+                self._active_effect_key = key
 
     def preview_duration_ms(self) -> int:
         effect = self._override_transition()
@@ -183,9 +214,16 @@ class Simulation:
     def _render(self, render_ctx: FrameContext) -> None:
         self.led_buffer.clear()
         if not self.inputs.strip_power:
+            self._active_effect_key = None
             return
         key = self._selected_effect_key(render_ctx)
-        self.effects[key].render(render_ctx, self.led_buffer, self.diagnostics)
+        effect = self.effects[key]
+        if key != self._active_effect_key:
+            effect.reset(render_ctx)
+            self._active_effect_key = key
+            render_ctx = replace(render_ctx, dt_ms=0)
+            self.state.last_render_context = render_ctx
+        effect.render(render_ctx, self.led_buffer, self.diagnostics)
 
     def _selected_effect_key(self, ctx: FrameContext) -> str:
         if self.render_override != "Auto":
