@@ -3,8 +3,7 @@
 #include <stdint.h>
 
 #include "../core/rgb8.h"
-#include "../effect_controller.h"
-#include "../pc_state.h"
+#include "../state_types.h"
 
 struct SleepEffectConfig {
   uint16_t travelIntervalMs;
@@ -39,7 +38,6 @@ void renderSleep(Aurora::Rgb8 *leds, uint8_t count,
                  const SleepEffectConfig &config, uint32_t nowMs);
 void renderTransition(Aurora::Rgb8 *leds, uint8_t count,
                       TransitionEffect effect, uint32_t startedAt,
-                      uint32_t nowMs,
-                      const EffectControllerConfig &effectConfig,
-                      const PcStateConfig &pcConfig,
+                      uint32_t transitionElapsedMs,
+                      uint32_t transitionDurationMs,
                       const TransitionRenderConfig &renderConfig);

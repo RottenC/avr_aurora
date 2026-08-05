@@ -321,7 +321,7 @@ void test_runtime_15_timestamp_wrap_preserves_hold_and_render_timing() {
   TEST_ASSERT_TRUE(runtime.snapshot().forcedShutdownLatched);
   TEST_ASSERT_EQUAL_UINT32(Config::PowerHoldForcedMs,
                            runtime.snapshot().powerHoldElapsedMs);
-  TEST_ASSERT_TRUE(runtime.snapshot().frameChanged);
+  TEST_ASSERT_TRUE(runtime.snapshot().frameUpdated);
 }
 
 void test_runtime_16_strip_loss_blacks_frame_without_erasing_running_state() {
@@ -379,6 +379,251 @@ void test_runtime_18_portable_color_helpers_match_fastled_anchors() {
   TEST_ASSERT_EQUAL_UINT8(64, Aurora::scale8(128, 128));
 }
 
+void assertConfigError(const AuroraRuntimeConfig &config,
+                       AuroraConfigError expected) {
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(expected),
+      static_cast<uint8_t>(validateAuroraRuntimeConfig(config)));
+  AuroraRuntime runtime(config);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(expected),
+                          static_cast<uint8_t>(runtime.configError()));
+  TEST_ASSERT_FALSE(runtime.configValid());
+  runtime.step(inputFrame(true), 100);
+  assertState(runtime, PcState::Off);
+}
+
+void test_runtime_19_default_configuration_is_valid() {
+  const AuroraRuntimeConfig config = Config::runtimeConfig();
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(AuroraConfigError::None),
+      static_cast<uint8_t>(validateAuroraRuntimeConfig(config)));
+  AuroraRuntime runtime(config);
+  TEST_ASSERT_TRUE(runtime.configValid());
+}
+
+void test_runtime_20_invalid_update_intervals_are_rejected() {
+  AuroraRuntimeConfig config = Config::runtimeConfig();
+  config.frameIntervalMs = 0;
+  assertConfigError(config, AuroraConfigError::FrameIntervalZero);
+
+  config = Config::runtimeConfig();
+  config.hdd.updateMs = 0;
+  assertConfigError(config, AuroraConfigError::HddUpdateIntervalZero);
+
+  config = Config::runtimeConfig();
+  config.auroraField.fixedStepMs = 0;
+  assertConfigError(config, AuroraConfigError::AuroraFixedStepZero);
+
+  config = Config::runtimeConfig();
+  config.auroraField.ticksPerFade = 0;
+  assertConfigError(config, AuroraConfigError::AuroraFadePeriodZero);
+}
+
+void test_runtime_21_invalid_spawn_ranges_are_rejected() {
+  AuroraRuntimeConfig config = Config::runtimeConfig();
+  config.auroraField.spawnMinTicks = 0;
+  assertConfigError(config, AuroraConfigError::AuroraSpawnTickRange);
+
+  config = Config::runtimeConfig();
+  config.auroraField.spawnMinTicks =
+      config.auroraField.spawnMaxTicks + 1;
+  assertConfigError(config, AuroraConfigError::AuroraSpawnTickRange);
+
+  config = Config::runtimeConfig();
+  config.auroraField.spawnMinCount = 0;
+  assertConfigError(config, AuroraConfigError::AuroraSpawnCountRange);
+
+  config = Config::runtimeConfig();
+  config.auroraField.spawnMinCount =
+      config.auroraField.spawnMaxCount + 1;
+  assertConfigError(config, AuroraConfigError::AuroraSpawnCountRange);
+
+  config = Config::runtimeConfig();
+  config.auroraField.spawnMaxCount = Aurora::LedCount + 1;
+  assertConfigError(
+      config, AuroraConfigError::AuroraSpawnCountExceedsLedCount);
+}
+
+void test_runtime_22_invalid_diffusion_is_rejected() {
+  AuroraRuntimeConfig config = Config::runtimeConfig();
+  config.auroraField.diffusionKernelSum = 0;
+  assertConfigError(config,
+                    AuroraConfigError::AuroraDiffusionKernelSumZero);
+
+  config = Config::runtimeConfig();
+  ++config.auroraField.diffusionKernelSum;
+  assertConfigError(config,
+                    AuroraConfigError::AuroraDiffusionKernelSumMismatch);
+}
+
+void test_runtime_23_invalid_renderer_configuration_is_rejected() {
+  AuroraRuntimeConfig config = Config::runtimeConfig();
+  config.renderer.sleep.travelIntervalMs = 0;
+  assertConfigError(config, AuroraConfigError::SleepIntervalZero);
+
+  config = Config::runtimeConfig();
+  config.renderer.sleep.secondaryBrightnessDivisor = 0;
+  assertConfigError(config, AuroraConfigError::SleepBrightnessDivisorZero);
+
+  config = Config::runtimeConfig();
+  config.renderer.transition.shutdownOriginMin =
+      config.renderer.transition.shutdownOriginMax + 1;
+  assertConfigError(config, AuroraConfigError::ShutdownOriginRange);
+
+  config = Config::runtimeConfig();
+  config.renderer.transition.shutdownOriginMax = Aurora::LedCount;
+  assertConfigError(config, AuroraConfigError::ShutdownOriginRange);
+
+  config = Config::runtimeConfig();
+  config.renderer.transition.forcedFlashAtMs =
+      config.pcState.forcedHoldMs + 1;
+  assertConfigError(config,
+                    AuroraConfigError::ForcedFlashAfterForcedHold);
+}
+
+void test_runtime_24_transition_snapshot_start_completion_and_unchanged() {
+  AuroraRuntime runtime(Config::runtimeConfig());
+  runtime.reset(19);
+  AuroraInputFrame input = inputFrame(false, true);
+  input.powerButtonPressed = true;
+  runtime.step(input, 100);
+  TEST_ASSERT_TRUE(runtime.snapshot().transitionChanged);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(TransitionEffect::None),
+                          static_cast<uint8_t>(
+                              runtime.snapshot().previousTransition));
+  assertTransition(runtime, TransitionEffect::Startup);
+
+  input.powerButtonPressed = false;
+  runtime.step(input, 101);
+  TEST_ASSERT_FALSE(runtime.snapshot().transitionChanged);
+
+  runtime.step(input, 100 + Config::StartupDurationMs);
+  TEST_ASSERT_TRUE(runtime.snapshot().transitionChanged);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(TransitionEffect::Startup),
+                          static_cast<uint8_t>(
+                              runtime.snapshot().previousTransition));
+  assertTransition(runtime, TransitionEffect::None);
+}
+
+void test_runtime_25_transition_snapshot_forced_replaced_by_shutdown() {
+  AuroraRuntime runtime(Config::runtimeConfig());
+  runtime.reset(20);
+  reconcileRuntimeToRunning(runtime);
+  startPowerHold(runtime, 100);
+  TEST_ASSERT_TRUE(runtime.snapshot().transitionChanged);
+  assertTransition(runtime, TransitionEffect::ForcedShutdown);
+
+  releasePowerButton(runtime, 500);
+  TEST_ASSERT_TRUE(runtime.snapshot().transitionChanged);
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(TransitionEffect::ForcedShutdown),
+      static_cast<uint8_t>(runtime.snapshot().previousTransition));
+  assertTransition(runtime, TransitionEffect::Shutdown);
+}
+
+void test_runtime_26_transition_snapshot_reset_completes_to_none() {
+  AuroraRuntime runtime(Config::runtimeConfig());
+  runtime.reset(21);
+  reconcileRuntimeToRunning(runtime);
+  AuroraInputFrame input = inputFrame(true);
+  input.resetButtonPressed = true;
+  runtime.step(input, 100);
+  assertTransition(runtime, TransitionEffect::Reset);
+  TEST_ASSERT_TRUE(runtime.snapshot().transitionChanged);
+
+  input.resetButtonPressed = false;
+  runtime.step(input, 100 + Config::ResetDurationMs);
+  assertTransition(runtime, TransitionEffect::None);
+  TEST_ASSERT_TRUE(runtime.snapshot().transitionChanged);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(TransitionEffect::Reset),
+                          static_cast<uint8_t>(
+                              runtime.snapshot().previousTransition));
+}
+
+void test_runtime_27_runtime_prepares_transition_timing() {
+  AuroraRuntime runtime(Config::runtimeConfig());
+  runtime.reset(22);
+  AuroraInputFrame input = inputFrame(false, true);
+  input.powerButtonPressed = true;
+  runtime.step(input, 100);
+  input.powerButtonPressed = false;
+  runtime.step(input, 100 + Config::StartupDurationMs / 2);
+
+  TEST_ASSERT_EQUAL_UINT32(Config::StartupDurationMs,
+                           runtime.snapshot().transitionDurationMs);
+  TEST_ASSERT_EQUAL_UINT32(Config::StartupDurationMs / 2,
+                           runtime.snapshot().transitionElapsedMs);
+  TEST_ASSERT_EQUAL_UINT8(127,
+                          runtime.snapshot().transitionProgress);
+}
+
+uint8_t countLitPixels(const AuroraRenderer &renderer) {
+  uint8_t count = 0;
+  for (uint8_t index = 0; index < renderer.ledCount(); ++index) {
+    if (renderer.frame()[index] != Aurora::Rgb8{}) ++count;
+  }
+  return count;
+}
+
+void test_runtime_28_renderer_consumes_prepared_timing_context() {
+  AuroraRenderer renderer(Config::rendererConfig(),
+                          Config::auroraFieldConfig());
+  renderer.reset(23);
+  AuroraRenderContext context;
+  context.pcState = PcState::Starting;
+  context.transition = TransitionEffect::Startup;
+  context.transitionElapsedMs = 100;
+  context.transitionDurationMs = 200;
+  context.transitionProgress = 127;
+  context.logicalStripPowerPresent = true;
+  renderer.render(context);
+  TEST_ASSERT_EQUAL_UINT8(29, countLitPixels(renderer));
+
+  context.transitionDurationMs = 400;
+  context.transitionProgress = 63;
+  renderer.render(context);
+  TEST_ASSERT_EQUAL_UINT8(15, countLitPixels(renderer));
+}
+
+AuroraInputFrame acceleratedInput(uint32_t simulationTimeMs) {
+  AuroraInputFrame input = inputFrame(true, true);
+  input.hddLed = (simulationTimeMs / 30U) % 2U != 0;
+  input.hddActiveEdges = simulationTimeMs % 60U == 0 ? 1 : 0;
+  return input;
+}
+
+void test_runtime_29_accelerated_playback_uses_deterministic_substeps() {
+  AuroraRuntime regular(Config::runtimeConfig());
+  AuroraRuntime accelerated(Config::runtimeConfig());
+  regular.reset(0x1234ABCDUL, 0);
+  accelerated.reset(0x1234ABCDUL, 0);
+  regular.step(acceleratedInput(0), 0);
+  accelerated.step(acceleratedInput(0), 0);
+
+  for (uint32_t nowMs = 10; nowMs <= 2000; nowMs += 10) {
+    regular.step(acceleratedInput(nowMs), nowMs);
+  }
+
+  uint32_t simulationTimeMs = 0;
+  uint16_t accumulatorMs = 0;
+  for (uint8_t uiFrame = 0; uiFrame < 20; ++uiFrame) {
+    accumulatorMs += 100;
+    while (accumulatorMs >= 10) {
+      simulationTimeMs += 10;
+      accelerated.step(acceleratedInput(simulationTimeMs),
+                       simulationTimeMs);
+      accumulatorMs -= 10;
+    }
+  }
+
+  TEST_ASSERT_EQUAL_UINT32(frameHash(regular), frameHash(accelerated));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(regular.snapshot().pcState),
+      static_cast<uint8_t>(accelerated.snapshot().pcState));
+  TEST_ASSERT_EQUAL_UINT8(regular.snapshot().hddActivity,
+                          accelerated.snapshot().hddActivity);
+}
+
 }  // namespace
 
 void runRuntimeTests() {
@@ -404,4 +649,18 @@ void runRuntimeTests() {
       test_runtime_16_strip_loss_blacks_frame_without_erasing_running_state);
   RUN_TEST(test_runtime_17_hdd_edges_accumulate_until_core_update_tick);
   RUN_TEST(test_runtime_18_portable_color_helpers_match_fastled_anchors);
+  RUN_TEST(test_runtime_19_default_configuration_is_valid);
+  RUN_TEST(test_runtime_20_invalid_update_intervals_are_rejected);
+  RUN_TEST(test_runtime_21_invalid_spawn_ranges_are_rejected);
+  RUN_TEST(test_runtime_22_invalid_diffusion_is_rejected);
+  RUN_TEST(test_runtime_23_invalid_renderer_configuration_is_rejected);
+  RUN_TEST(
+      test_runtime_24_transition_snapshot_start_completion_and_unchanged);
+  RUN_TEST(
+      test_runtime_25_transition_snapshot_forced_replaced_by_shutdown);
+  RUN_TEST(test_runtime_26_transition_snapshot_reset_completes_to_none);
+  RUN_TEST(test_runtime_27_runtime_prepares_transition_timing);
+  RUN_TEST(test_runtime_28_renderer_consumes_prepared_timing_context);
+  RUN_TEST(
+      test_runtime_29_accelerated_playback_uses_deterministic_substeps);
 }

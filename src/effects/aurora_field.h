@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 
+#include "../core/geometry.h"
 #include "../core/rgb8.h"
 
 namespace Aurora {

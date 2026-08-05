@@ -105,8 +105,7 @@ constexpr Aurora::FieldConfig auroraFieldConfig() {
 }
 
 constexpr AuroraRendererConfig rendererConfig() {
-  return {FrameIntervalMs,
-          {SleepTravelIntervalMs,
+  return {{SleepTravelIntervalMs,
            SleepSecondaryPointOffset,
            SleepBeatsPerMinute,
            SleepMinimumBrightness,
@@ -133,13 +132,20 @@ constexpr AuroraRendererConfig rendererConfig() {
 }
 
 constexpr AuroraRuntimeConfig runtimeConfig() {
-  return {powerLedTrackerConfig(), hddActivityConfig(), pcStateConfig(),
-          effectControllerConfig(), auroraFieldConfig(), rendererConfig()};
+  return {FrameIntervalMs,
+          powerLedTrackerConfig(),
+          hddActivityConfig(),
+          pcStateConfig(),
+          effectControllerConfig(),
+          auroraFieldConfig(),
+          rendererConfig()};
 }
 
 static_assert(LedCount == Aurora::LedCount,
               "Firmware and portable frame sizes must match");
 static_assert(LedCount >= 3, "Aurora requires at least three LEDs");
+static_assert(FrameIntervalMs > 0, "Frame interval must be positive");
+static_assert(HddUpdateMs > 0, "HDD update interval must be positive");
 static_assert(AuroraFixedStepMs > 0, "Aurora fixed step must be positive");
 static_assert(AuroraSpawnMinTicks > 0 &&
                   AuroraSpawnMinTicks <= AuroraSpawnMaxTicks,
@@ -160,6 +166,10 @@ static_assert(ShutdownOriginMin <= ShutdownOriginMax &&
               "Shutdown origin must be inside the LED frame");
 static_assert(ForcedFlashAtMs <= PowerHoldForcedMs,
               "Forced flash must occur during the hold interval");
-static_assert(AuroraDiffusionKernelSum == 65,
-              "Aurora diffusion weights must remain normalized to 65");
+static_assert(AuroraDiffusionKernelSum > 0,
+              "Aurora diffusion kernel sum must be positive");
+static_assert(AuroraDiffusionKernelSum ==
+                  AuroraDiffusionSideWeight * 2 +
+                      AuroraDiffusionCenterWeight,
+              "Aurora diffusion kernel sum must match its weights");
 }

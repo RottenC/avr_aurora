@@ -42,10 +42,14 @@ void loop() {
   const uint32_t nowMs = millis();
   inputs.update(nowMs);
   const AuroraInputFrame &inputFrame = inputs.frame();
+  if (ledDriver.updatePowerState(inputs.rawStripPowerPresent(),
+                                 inputFrame.stripPowerPresent, nowMs)) {
+    runtime.requestFrameUpdate();
+  }
   runtime.step(inputFrame, nowMs);
 
   const AuroraSnapshot &snapshot = runtime.snapshot();
   ledDriver.output(runtime.ledFrame(), runtime.ledCount(),
-                   inputFrame.stripPowerPresent, snapshot.frameChanged);
+                   snapshot.frameUpdated);
   debug.update(inputFrame, snapshot, nowMs);
 }

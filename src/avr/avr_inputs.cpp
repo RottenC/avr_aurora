@@ -34,9 +34,10 @@ void AvrInputs::begin() {
       AvrConfig::PowerButtonPin, AvrConfig::PowerButtonActiveHigh);
   resetButton_.stable = resetButton_.candidate =
       normalizedRead(AvrConfig::ResetButtonPin, AvrConfig::ResetButtonActiveHigh);
-  stripPower_.stable = stripPower_.candidate = normalizedRead(
+  rawStripPowerPresent_ = normalizedRead(
       AvrConfig::StripPowerPresentPin,
       AvrConfig::StripPowerPresentActiveHigh);
+  stripPower_.stable = stripPower_.candidate = rawStripPowerPresent_;
   debugButton_.stable = debugButton_.candidate = normalizedRead(
       AvrConfig::DebugButtonPin, AvrConfig::DebugButtonActiveHigh);
   powerLed_.changedAt = powerButton_.changedAt = resetButton_.changedAt =
@@ -81,6 +82,9 @@ void AvrInputs::update(uint32_t nowMs) {
   frame_.hddLed =
       normalizedRead(AvrConfig::HddLedPin, AvrConfig::HddLedActiveHigh);
   frame_.hddActiveEdges = consumeHddEdges();
+  rawStripPowerPresent_ = normalizedRead(
+      AvrConfig::StripPowerPresentPin,
+      AvrConfig::StripPowerPresentActiveHigh);
 
   if (nowMs - lastPollMs_ < AvrConfig::InputPollMs) return;
   lastPollMs_ = nowMs;
@@ -91,10 +95,8 @@ void AvrInputs::update(uint32_t nowMs) {
             normalizedRead(AvrConfig::PowerLedPin,
                            AvrConfig::PowerLedActiveHigh),
             nowMs, unusedPressed, unusedReleased);
-  updateOne(stripPower_,
-            normalizedRead(AvrConfig::StripPowerPresentPin,
-                           AvrConfig::StripPowerPresentActiveHigh),
-            nowMs, unusedPressed, unusedReleased);
+  updateOne(stripPower_, rawStripPowerPresent_, nowMs, unusedPressed,
+            unusedReleased);
   updateOne(powerButton_,
             normalizedRead(AvrConfig::PowerButtonPin,
                            AvrConfig::PowerButtonActiveHigh),

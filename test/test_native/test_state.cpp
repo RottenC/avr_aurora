@@ -8,6 +8,7 @@
 
 void runAuroraTests();
 void runRuntimeTests();
+void runStripPowerSafetyTests();
 
 void setUp() {}
 void tearDown() {}
@@ -496,5 +497,6 @@ int main(int, char **) {
   RUN_TEST(test_auto_28_await_shutdown_timeout_and_off);
   runAuroraTests();
   runRuntimeTests();
+  runStripPowerSafetyTests();
   return UNITY_END();
 }

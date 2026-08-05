@@ -4,8 +4,6 @@
 
 namespace Aurora {
 
-constexpr uint8_t LedCount = 56;
-
 struct Rgb8 {
   uint8_t r = 0;
   uint8_t g = 0;

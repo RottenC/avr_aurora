@@ -9,6 +9,7 @@ class AvrInputs {
   void begin();
   void update(uint32_t nowMs);
   const AuroraInputFrame &frame() const { return frame_; }
+  bool rawStripPowerPresent() const { return rawStripPowerPresent_; }
 
  private:
   struct Debounced {
@@ -28,4 +29,5 @@ class AvrInputs {
   Debounced stripPower_;
   Debounced debugButton_;
   AuroraInputFrame frame_{};
+  bool rawStripPowerPresent_ = false;
 };

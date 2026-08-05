@@ -4,12 +4,8 @@
 #include "portable_math.h"
 
 AuroraRenderer::AuroraRenderer(const AuroraRendererConfig &config,
-                               const EffectControllerConfig &effectConfig,
-                               const PcStateConfig &pcConfig,
                                const Aurora::FieldConfig &fieldConfig)
     : config_(config),
-      effectConfig_(effectConfig),
-      pcConfig_(pcConfig),
       aurora_(fieldConfig),
       seed_(fieldConfig.zeroSeedFallback),
       lastAuroraUpdateMs_(0),
@@ -25,26 +21,26 @@ void AuroraRenderer::reset(uint32_t seed, uint32_t nowMs) {
   Aurora::fillRgb(frame_, Aurora::LedCount, {0, 0, 0});
 }
 
-void AuroraRenderer::render(PcState state, TransitionEffect transition,
-                            uint32_t transitionStartedAtMs,
-                            uint8_t hddActivity, bool stripPowerPresent,
-                            uint32_t nowMs) {
-  if (!stripPowerPresent) {
+void AuroraRenderer::render(const AuroraRenderContext &context) {
+  if (!context.logicalStripPowerPresent) {
     deactivateAurora();
     renderBlack(frame_, Aurora::LedCount);
     return;
   }
 
-  if (transition != TransitionEffect::None) {
+  if (context.transition != TransitionEffect::None) {
     deactivateAurora();
-    renderTransition(frame_, Aurora::LedCount, transition,
-                     transitionStartedAtMs, nowMs, effectConfig_, pcConfig_,
+    renderTransition(frame_, Aurora::LedCount, context.transition,
+                     context.transitionStartedAtMs,
+                     context.transitionElapsedMs,
+                     context.transitionDurationMs,
                      config_.transition);
-  } else if (state == PcState::Running || state == PcState::Starting) {
-    renderAurora(hddActivity, nowMs);
-  } else if (state == PcState::Sleeping) {
+  } else if (context.pcState == PcState::Running ||
+             context.pcState == PcState::Starting) {
+    renderAurora(context.hddActivity, context.nowMs);
+  } else if (context.pcState == PcState::Sleeping) {
     deactivateAurora();
-    renderSleep(frame_, Aurora::LedCount, config_.sleep, nowMs);
+    renderSleep(frame_, Aurora::LedCount, config_.sleep, context.nowMs);
   } else {
     deactivateAurora();
     renderBlack(frame_, Aurora::LedCount);

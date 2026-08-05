@@ -2,26 +2,40 @@
 
 #include "avr_config.h"
 
+AvrLedDriver::AvrLedDriver()
+    : stripPowerSafety_(AvrConfig::DebounceMs) {}
+
 void AvrLedDriver::begin() {
   FastLED.addLeds<WS2812B, AvrConfig::LedDataPin, AvrConfig::LedColorOrder>(
       leds_, Aurora::LedCount);
   FastLED.setMaxPowerInVoltsAndMilliamps(AvrConfig::LedVolts,
                                          AvrConfig::LedMaxMilliamps);
   fill_solid(leds_, Aurora::LedCount, CRGB::Black);
+  stripPowerSafety_.reset(false, false, 0);
   enterSafeState();
 }
 
+bool AvrLedDriver::updatePowerState(bool rawStripPowerPresent,
+                                    bool logicalStripPowerPresent,
+                                    uint32_t nowMs) {
+  const StripPowerSafetyResult result = stripPowerSafety_.update(
+      rawStripPowerPresent, logicalStripPowerPresent, nowMs);
+  outputAllowed_ = result.outputAllowed;
+  if (result.safeStateRequired) enterSafeState();
+  if (result.requestFrameUpdate) waitingForFreshFrame_ = true;
+  return result.requestFrameUpdate;
+}
+
 void AvrLedDriver::output(const Aurora::Rgb8 *frame, uint8_t count,
-                          bool stripPowerPresent, bool frameChanged) {
-  if (!stripPowerPresent) {
+                          bool frameUpdated) {
+  if (!outputAllowed_ || (waitingForFreshFrame_ && !frameUpdated)) {
     enterSafeState();
-    stripPowerWasPresent_ = false;
     return;
   }
 
   digitalWrite(AvrConfig::LedDataPin, LOW);
   pinMode(AvrConfig::LedDataPin, OUTPUT);
-  if (frameChanged || !stripPowerWasPresent_) {
+  if (frameUpdated || !dataOutputWasEnabled_) {
     const uint8_t copyCount =
         count < Aurora::LedCount ? count : Aurora::LedCount;
     for (uint8_t index = 0; index < copyCount; ++index) {
@@ -32,10 +46,12 @@ void AvrLedDriver::output(const Aurora::Rgb8 *frame, uint8_t count,
     }
     FastLED.show();
   }
-  stripPowerWasPresent_ = true;
+  waitingForFreshFrame_ = false;
+  dataOutputWasEnabled_ = true;
 }
 
 void AvrLedDriver::enterSafeState() {
   digitalWrite(AvrConfig::LedDataPin, LOW);
   pinMode(AvrConfig::LedDataPin, INPUT);
+  dataOutputWasEnabled_ = false;
 }
