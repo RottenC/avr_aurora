@@ -2,6 +2,12 @@
 
 Desktop workbench for developing `avr_aurora` visual effects without flashing Arduino hardware. It implements one rendering model only: **AVR-like mode**. It is not cycle-accurate and is not a photometric model of real WS2812 LEDs.
 
+The hardware-independent C++ `AuroraRuntime` in `src/core` is now the canonical
+firmware behavior implementation. This existing Python GUI remains an
+unbound workbench and still duplicates control/effect code; future simulator
+integration should consume the C++ runtime instead of extending that
+duplication.
+
 ## Windows setup (cmd)
 
 ```cmd

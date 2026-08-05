@@ -1,5 +1,17 @@
 #include "pc_state.h"
 
+void PcStateMachine::reset() {
+  state_ = PcState::Off;
+  powerHoldStartMs_ = 0;
+  startingSinceMs_ = 0;
+  awaitingShutdownSinceMs_ = 0;
+  trackingHold_ = false;
+  forcedLatched_ = false;
+  startupTransitionRequested_ = false;
+  startupTransitionFinished_ = false;
+  waitingForStripPower_ = false;
+}
+
 void PcStateMachine::enterOff() {
   state_ = PcState::Off;
   trackingHold_ = false;

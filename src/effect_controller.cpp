@@ -1,5 +1,11 @@
 #include "effect_controller.h"
 
+void EffectController::reset() {
+  current_ = TransitionEffect::None;
+  finished_ = TransitionEffect::None;
+  startedAt_ = 0;
+}
+
 uint8_t EffectController::priority(TransitionEffect effect) {
   switch (effect) {
     case TransitionEffect::ForcedShutdown: return 4;
@@ -11,7 +17,7 @@ uint8_t EffectController::priority(TransitionEffect effect) {
   return 0;
 }
 
-uint32_t EffectController::duration(TransitionEffect effect) const {
+uint32_t EffectController::durationFor(TransitionEffect effect) const {
   switch (effect) {
     case TransitionEffect::Startup: return config_.startupDurationMs;
     case TransitionEffect::Shutdown: return config_.shutdownDurationMs;
@@ -74,7 +80,7 @@ void EffectController::reconcile(PcState state) {
 
 void EffectController::update(uint32_t nowMs) {
   if (current_ == TransitionEffect::None || current_ == TransitionEffect::ForcedShutdown) return;
-  if (nowMs - startedAt_ >= duration(current_)) {
+  if (nowMs - startedAt_ >= durationFor(current_)) {
     finished_ = current_;
     current_ = TransitionEffect::None;
   }

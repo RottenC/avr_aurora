@@ -7,6 +7,10 @@
 #include "power_led_tracker.h"
 
 void runAuroraTests();
+void runRuntimeTests();
+
+void setUp() {}
+void tearDown() {}
 
 namespace {
 PcStateMachine makePcStateMachine() {
@@ -491,5 +495,6 @@ int main(int, char **) {
   RUN_TEST(test_auto_27_boot_running_and_sleeping_are_separate);
   RUN_TEST(test_auto_28_await_shutdown_timeout_and_off);
   runAuroraTests();
+  runRuntimeTests();
   return UNITY_END();
 }

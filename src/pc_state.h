@@ -31,10 +31,15 @@ struct PcStateEvents {
 class PcStateMachine {
 public:
   explicit PcStateMachine(const PcStateConfig &config) : config_(config) {}
+  void reset();
   PcStateEvents update(const PcStateInputs &inputs, uint32_t nowMs);
   PcState state() const { return state_; }
   bool forcedLatched() const { return forcedLatched_; }
   uint32_t powerHoldStartMs() const { return powerHoldStartMs_; }
+  uint32_t forcedHoldMs() const { return config_.forcedHoldMs; }
+  uint32_t powerHoldElapsed(uint32_t nowMs) const {
+    return trackingHold_ ? nowMs - powerHoldStartMs_ : 0;
+  }
 
 private:
   void enterOff();
