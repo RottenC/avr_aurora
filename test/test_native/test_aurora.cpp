@@ -65,7 +65,7 @@ void test_aurora_prng_and_reset_anchors() {
   TEST_ASSERT_EQUAL_HEX32(67634689UL, Aurora::xorshift32(270369UL));
   TEST_ASSERT_EQUAL_HEX32(2647435461UL, Aurora::xorshift32(67634689UL));
 
-  Aurora::Field field;
+  Aurora::Field field(Config::auroraFieldConfig());
   field.reset(1);
   TEST_ASSERT_EQUAL_HEX32(270369UL, field.prngState());
   TEST_ASSERT_EQUAL_UINT8(38, field.ticksUntilNextSpawn());
@@ -81,7 +81,7 @@ void test_aurora_prng_and_reset_anchors() {
 }
 
 void test_aurora_initial_rgb_and_zero_elapsed() {
-  Aurora::Field field;
+  Aurora::Field field(Config::auroraFieldConfig());
   field.reset(456);
   const uint32_t before = stateHash(field);
   field.advance(0);
@@ -94,7 +94,7 @@ void test_aurora_initial_rgb_and_zero_elapsed() {
 }
 
 void test_aurora_diffusion_uses_open_out_of_place_boundaries() {
-  Aurora::Field center;
+  Aurora::Field center(Config::auroraFieldConfig());
   center.reset(1);
   center.setCellForTest(28, kQ8_8Max, 0);
   center.advance(Config::AuroraFixedStepMs);
@@ -105,7 +105,7 @@ void test_aurora_diffusion_uses_open_out_of_place_boundaries() {
   TEST_ASSERT_EQUAL_UINT8(1, center.colorProgress(28));
   TEST_ASSERT_EQUAL_UINT8(1, center.colorProgress(29));
 
-  Aurora::Field left;
+  Aurora::Field left(Config::auroraFieldConfig());
   left.reset(1);
   left.setCellForTest(0, kQ8_8Max, 0);
   left.advance(Config::AuroraFixedStepMs);
@@ -115,7 +115,7 @@ void test_aurora_diffusion_uses_open_out_of_place_boundaries() {
 }
 
 void test_aurora_overlap_color_peak_and_rgb_anchors() {
-  Aurora::Field overlap;
+  Aurora::Field overlap(Config::auroraFieldConfig());
   overlap.reset(1);
   overlap.setCellForTest(27, kQ8_8Max, 0);
   overlap.setCellForTest(28, kQ8_8Max, 128);
@@ -124,7 +124,7 @@ void test_aurora_overlap_color_peak_and_rgb_anchors() {
   TEST_ASSERT_EQUAL_UINT16(kQ8_8Max, overlap.brightnessQ8_8(28));
   TEST_ASSERT_EQUAL_UINT8(128, overlap.colorProgress(28));
 
-  Aurora::Field peak;
+  Aurora::Field peak(Config::auroraFieldConfig());
   peak.reset(1);
   peak.setCellForTest(27, kQ8_8Max, 0);
   peak.setCellForTest(28, kQ8_8Max, 128);
@@ -134,7 +134,7 @@ void test_aurora_overlap_color_peak_and_rgb_anchors() {
   TEST_ASSERT_EQUAL_UINT8(126, peak.colorProgress(28));
   TEST_ASSERT_EQUAL_UINT8(3, peak.colorProgress(29));
 
-  Aurora::Field rgb;
+  Aurora::Field rgb(Config::auroraFieldConfig());
   rgb.reset(1);
   rgb.setCellForTest(0, kQ8_8Max, 0);
   assertRgb(rgb.pixel(0), 26, 186, 148);
@@ -145,10 +145,10 @@ void test_aurora_overlap_color_peak_and_rgb_anchors() {
 }
 
 void test_aurora_fixed_step_grouping_matches() {
-  Aurora::Field step5;
-  Aurora::Field step20;
-  Aurora::Field step100;
-  Aurora::Field step200;
+  Aurora::Field step5(Config::auroraFieldConfig());
+  Aurora::Field step20(Config::auroraFieldConfig());
+  Aurora::Field step100(Config::auroraFieldConfig());
+  Aurora::Field step200(Config::auroraFieldConfig());
   step5.reset(321);
   step20.reset(321);
   step100.reset(321);
@@ -174,7 +174,7 @@ void test_aurora_python_parity_checkpoints() {
       {70, 0xD89B4048UL}, {100, 0xDBD17793UL}, {600, 0x38FF6439UL},
   };
 
-  Aurora::Field field;
+  Aurora::Field field(Config::auroraFieldConfig());
   field.reset(1);
   uint16_t previousTick = 0;
   for (const Checkpoint &checkpoint : checkpoints) {

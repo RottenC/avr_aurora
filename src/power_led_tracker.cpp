@@ -1,5 +1,15 @@
 #include "power_led_tracker.h"
 
+void PowerLedTracker::reset() {
+  last_ = false;
+  initialized_ = false;
+  seenOn_ = false;
+  lastChangeMs_ = 0;
+  lastOnMs_ = 0;
+  lastValidBlinkEdgeMs_ = 0;
+  blinkEdges_ = 0;
+}
+
 void PowerLedTracker::update(bool active, uint32_t nowMs) {
   if (!initialized_) {
     initialized_ = true;
