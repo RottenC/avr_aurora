@@ -12,6 +12,14 @@
             "description": "Build aurora_simulator and core tests with vcpkg dependencies",
             "generator": "Ninja Multi-Config",
             "binaryDir": "${sourceDir}/build/native-simulator-vcpkg",
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "toolset": {
+                "value": "host=x64",
+                "strategy": "external"
+            },
             "cacheVariables": {
                 "AURORA_BUILD_SIMULATOR": "ON",
                 "BUILD_TESTING": "ON",
