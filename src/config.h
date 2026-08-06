@@ -9,6 +9,7 @@ constexpr uint8_t LedCount = 56;
 
 constexpr uint32_t FrameIntervalMs = 20;
 constexpr uint32_t HddUpdateMs = 10;
+constexpr uint8_t HddEdgeBoost = 20;
 constexpr uint32_t ShortPowerLedOffIgnoreMs = 3500;
 constexpr uint32_t PowerLedBlinkMinHalfPeriodMs = 150;
 constexpr uint32_t PowerLedBlinkMaxHalfPeriodMs = 3000;

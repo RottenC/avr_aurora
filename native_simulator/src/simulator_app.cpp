@@ -3,6 +3,7 @@
 #include <imgui.h>
 
 #include "led_view.h"
+#include "input_panel.h"
 
 namespace {
 
@@ -93,4 +94,5 @@ void SimulatorApp::draw() {
   ImGui::End();
 
   drawLedView(session_.runtime());
+  drawInputPanel(session_);
 }

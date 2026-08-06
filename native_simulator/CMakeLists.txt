@@ -8,6 +8,10 @@ add_executable(aurora_simulator
     src/simulator_app.cpp
     src/simulator_session.cpp
     src/led_view.cpp
+    src/input_panel.cpp
+    src/virtual_inputs.cpp
+    src/power_led_generator.cpp
+    src/hdd_generator.cpp
 )
 
 target_compile_features(aurora_simulator PRIVATE cxx_std_17)
@@ -31,6 +35,9 @@ if(BUILD_TESTING)
     add_executable(aurora_simulator_session_test
         test/simulator_session_test.cpp
         src/simulator_session.cpp
+        src/virtual_inputs.cpp
+        src/power_led_generator.cpp
+        src/hdd_generator.cpp
     )
     target_compile_features(aurora_simulator_session_test PRIVATE cxx_std_17)
     set_target_properties(aurora_simulator_session_test

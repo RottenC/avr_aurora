@@ -12,8 +12,6 @@ constexpr uint8_t SimulationUnitsPerMs = 20;
 }  // namespace
 
 SimulatorSession::SimulatorSession() : runtime_(Config::runtimeConfig()) {
-  inputs_.powerLed = SignalState::High;
-  inputs_.stripPowerPresent = true;
   reset();
 }
 
@@ -39,24 +37,28 @@ uint16_t SimulatorSession::speedUnitsPerWallMs(SimulationSpeed speed) {
   return 20;
 }
 
-SignalState SimulatorSession::withoutTransition(SignalState state) {
-  if (state == SignalState::Rising) return SignalState::High;
-  if (state == SignalState::Falling) return SignalState::Low;
-  return state;
-}
-
-void SimulatorSession::clearTransientInputs() {
-  inputs_.powerLed = withoutTransition(inputs_.powerLed);
-  inputs_.hddLed = withoutTransition(inputs_.hddLed);
-  inputs_.powerButton = withoutTransition(inputs_.powerButton);
-  inputs_.resetButton = withoutTransition(inputs_.resetButton);
-  inputs_.hddContribution = 0;
-}
-
 void SimulatorSession::advanceOnce(uint32_t simulationDeltaMs) {
+  const uint32_t intervalStart = simulationTimeMs_;
+  const bool initialPowerLevel = powerLedGenerator_.level();
+  const bool initialHddLevel = hddGenerator_.level();
+  const PowerLedUpdate power = powerLedGenerator_.update(
+      simulationDeltaMs, inputs_.manualPowerLed());
+  const HddUpdate hdd = hddGenerator_.update(
+      simulationDeltaMs, inputs_.manualHddLed());
+  lastGeneratedHddEdges_ = hdd.activeEdges;
+
+  bool powerLevel = initialPowerLevel;
+  for (std::size_t index = 0; index < power.transitionCount; ++index) {
+    const PowerLedTransition &transition = power.transitions[index];
+    powerLevel = transition.active;
+    runtime_.step(inputs_.buildFrame(powerLevel, initialHddLevel, 0),
+                  intervalStart + transition.offsetMs);
+  }
   simulationTimeMs_ += simulationDeltaMs;
-  runtime_.step(inputs_, simulationTimeMs_);
-  clearTransientInputs();
+  // The final call carries the generated HDD level and accumulated active
+  // edges, including when a Power LED transition also occurred at the end.
+  runtime_.step(inputs_.buildFrame(power.level, hdd.level, hdd.activeEdges),
+                simulationTimeMs_);
 }
 
 void SimulatorSession::update(uint32_t wallDeltaMs) {
@@ -80,11 +82,17 @@ void SimulatorSession::stepFrame() {
 }
 
 void SimulatorSession::reset() {
-  clearTransientInputs();
   simulationTimeMs_ = 0;
   fractionalSimulationUnits_ = 0;
+  lastGeneratedHddEdges_ = 0;
+  inputs_.resetTransientState();
+  powerLedGenerator_.reset();
+  hddGenerator_.reset();
   runtime_.reset(seed_, simulationTimeMs_);
   runtime_.requestFrameUpdate();
-  runtime_.step(inputs_, simulationTimeMs_);
-  clearTransientInputs();
+  const PowerLedUpdate power = powerLedGenerator_.update(
+      0, inputs_.manualPowerLed());
+  const HddUpdate hdd = hddGenerator_.update(0, inputs_.manualHddLed());
+  runtime_.step(inputs_.buildFrame(power.level, hdd.level, 0),
+                simulationTimeMs_);
 }
