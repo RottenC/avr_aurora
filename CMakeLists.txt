@@ -5,6 +5,10 @@ project(avr_aurora LANGUAGES CXX)
 include(CTest)
 
 option(AURORA_BUILD_SIMULATOR "Build AVR Aurora native simulator" OFF)
+option(AURORA_BUILD_DESKTOP "Build AVR Aurora desktop simulator" OFF)
+if(AURORA_BUILD_DESKTOP)
+    set(AURORA_BUILD_SIMULATOR ON)
+endif()
 
 add_library(aurora_core STATIC
     src/core/aurora_runtime.cpp
