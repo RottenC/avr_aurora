@@ -1,6 +1,6 @@
-#include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 
 #include <SDL.h>
 #include <imgui.h>
@@ -13,7 +13,6 @@ namespace {
 
 constexpr int InitialWindowWidth = 1200;
 constexpr int InitialWindowHeight = 420;
-constexpr double MaxAcceptedWallDeltaMs = 40.0;
 
 SDL_Renderer *createRenderer(SDL_Window *window) {
   SDL_Renderer *renderer =
@@ -68,6 +67,7 @@ int main(int, char **) {
 
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
+  ImGui::GetIO().IniFilename = nullptr;
   ImGui::StyleColorsDark();
 
   bool platformBackendInitialized =
@@ -95,8 +95,8 @@ int main(int, char **) {
   }
 
   SimulatorApp app;
-  uint64_t previousCounter = SDL_GetPerformanceCounter();
-  double fractionalWallMs = 0.0;
+  const uint64_t startCounter = SDL_GetPerformanceCounter();
+  uint64_t previousWallTimeMs = 0;
   bool running = true;
 
   while (running) {
@@ -110,19 +110,25 @@ int main(int, char **) {
         running = false;
       }
     }
+    if (!running) break;
 
     const uint64_t currentCounter = SDL_GetPerformanceCounter();
-    const uint64_t elapsedCounter = currentCounter - previousCounter;
-    previousCounter = currentCounter;
-    const double measuredWallDeltaMs =
-        static_cast<double>(elapsedCounter) * 1000.0 /
-        static_cast<double>(performanceFrequency);
-    fractionalWallMs +=
-        std::min(measuredWallDeltaMs, MaxAcceptedWallDeltaMs);
-    const uint32_t wholeWallDeltaMs =
-        static_cast<uint32_t>(fractionalWallMs);
-    fractionalWallMs -= wholeWallDeltaMs;
-    app.update(wholeWallDeltaMs);
+    const uint64_t currentWallTimeMs = static_cast<uint64_t>(
+        static_cast<double>(currentCounter - startCounter) * 1000.0 /
+        static_cast<double>(performanceFrequency));
+    const uint64_t elapsedWallTimeMs =
+        currentWallTimeMs - previousWallTimeMs;
+    previousWallTimeMs = currentWallTimeMs;
+    const uint32_t wallDeltaMs = elapsedWallTimeMs >
+                                         std::numeric_limits<uint32_t>::max()
+                                     ? std::numeric_limits<uint32_t>::max()
+                                     : static_cast<uint32_t>(elapsedWallTimeMs);
+    app.update(wallDeltaMs);
+
+    if ((SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED) != 0U) {
+      SDL_Delay(16);
+      continue;
+    }
 
     ImGui_ImplSDLRenderer2_NewFrame();
     ImGui_ImplSDL2_NewFrame();

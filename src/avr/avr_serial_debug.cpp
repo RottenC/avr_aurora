@@ -50,6 +50,22 @@ const __FlashStringHelper *powerModeName(PowerLedMode mode) {
   return F("?");
 }
 
+const __FlashStringHelper *signalStateName(SignalState state) {
+  switch (state) {
+    case SignalState::Low:
+      return F("Low");
+    case SignalState::Rising:
+      return F("Rising");
+    case SignalState::High:
+      return F("High");
+    case SignalState::Falling:
+      return F("Falling");
+    case SignalState::Blinking:
+      return F("Blinking");
+  }
+  return F("?");
+}
+
 void logBoolChange(const __FlashStringHelper *name, bool before, bool after) {
   Serial.print(name);
   Serial.print(F(" "));
@@ -58,16 +74,37 @@ void logBoolChange(const __FlashStringHelper *name, bool before, bool after) {
   Serial.println(after);
 }
 
+bool signalObservationChanged(SignalState before, SignalState after) {
+  if (before == after) return false;
+  if (signalIsHigh(before) && signalIsHigh(after)) return false;
+  const bool beforeLow = before == SignalState::Low ||
+                         before == SignalState::Falling;
+  const bool afterLow = after == SignalState::Low ||
+                        after == SignalState::Falling;
+  return !beforeLow || !afterLow;
+}
+
+void logSignalChange(const __FlashStringHelper *name, SignalState before,
+                     SignalState after) {
+  Serial.print(name);
+  Serial.print(F(" "));
+  Serial.print(signalStateName(before));
+  Serial.print(F(" -> "));
+  Serial.println(signalStateName(after));
+}
+
 void logSnapshot(const AuroraInputFrame &inputs,
                  const AuroraSnapshot &snapshot) {
   Serial.print(F("snapshot pwrLed="));
-  Serial.print(inputs.powerLed);
+  Serial.print(signalStateName(inputs.powerLed));
   Serial.print(F(" hddLed="));
-  Serial.print(inputs.hddLed);
+  Serial.print(signalStateName(inputs.hddLed));
+  Serial.print(F(" hddContribution="));
+  Serial.print(inputs.hddContribution);
   Serial.print(F(" pwrBtn="));
-  Serial.print(inputs.powerButton);
+  Serial.print(signalStateName(inputs.powerButton));
   Serial.print(F(" rstBtn="));
-  Serial.print(inputs.resetButton);
+  Serial.print(signalStateName(inputs.resetButton));
   Serial.print(F(" strip="));
   Serial.print(inputs.stripPowerPresent);
   Serial.print(F(" powerMode="));
@@ -121,24 +158,25 @@ void AvrSerialDebug::update(const AuroraInputFrame &inputs,
     lastPowerMode_ = snapshot.powerLedMode;
   }
 
-  if (lastInputs_.powerLed != inputs.powerLed) {
-    logBoolChange(F("powerLed"), lastInputs_.powerLed, inputs.powerLed);
+  if (signalObservationChanged(lastInputs_.powerLed, inputs.powerLed)) {
+    logSignalChange(F("powerLed"), lastInputs_.powerLed, inputs.powerLed);
   }
-  if (lastInputs_.powerButton != inputs.powerButton) {
-    logBoolChange(F("powerButton"), lastInputs_.powerButton,
-                  inputs.powerButton);
+  if (signalObservationChanged(lastInputs_.hddLed, inputs.hddLed)) {
+    logSignalChange(F("hddLed"), lastInputs_.hddLed, inputs.hddLed);
   }
-  if (lastInputs_.resetButton != inputs.resetButton) {
-    logBoolChange(F("resetButton"), lastInputs_.resetButton,
-                  inputs.resetButton);
+  if (signalObservationChanged(lastInputs_.powerButton,
+                               inputs.powerButton)) {
+    logSignalChange(F("powerButton"), lastInputs_.powerButton,
+                    inputs.powerButton);
+  }
+  if (signalObservationChanged(lastInputs_.resetButton,
+                               inputs.resetButton)) {
+    logSignalChange(F("resetButton"), lastInputs_.resetButton,
+                    inputs.resetButton);
   }
   if (lastInputs_.stripPowerPresent != inputs.stripPowerPresent) {
     logBoolChange(F("stripPower"), lastInputs_.stripPowerPresent,
                   inputs.stripPowerPresent);
-  }
-  if (lastInputs_.debugButton != inputs.debugButton) {
-    logBoolChange(F("debugButton"), lastInputs_.debugButton,
-                  inputs.debugButton);
   }
   lastInputs_ = inputs;
 

@@ -10,7 +10,17 @@ void PowerLedTracker::reset() {
   blinkEdges_ = 0;
 }
 
-void PowerLedTracker::update(bool active, uint32_t nowMs) {
+void PowerLedTracker::update(SignalState state, uint32_t nowMs) {
+  if (state == SignalState::Blinking) {
+    initialized_ = true;
+    seenOn_ = true;
+    lastOnMs_ = nowMs;
+    lastValidBlinkEdgeMs_ = nowMs;
+    blinkEdges_ = config_.blinkEdgesRequired;
+    return;
+  }
+
+  const bool active = signalIsHigh(state);
   if (!initialized_) {
     initialized_ = true;
     last_ = active;

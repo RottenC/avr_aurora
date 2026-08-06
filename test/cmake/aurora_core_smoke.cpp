@@ -10,7 +10,7 @@ int main() {
 
   runtime.reset(0x12345678UL, 0);
   AuroraInputFrame inputs;
-  inputs.powerLed = true;
+  inputs.powerLed = SignalState::High;
   inputs.stripPowerPresent = true;
   runtime.step(inputs, 0);
 

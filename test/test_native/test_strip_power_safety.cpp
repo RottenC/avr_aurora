@@ -65,7 +65,7 @@ void test_strip_power_policy_fresh_render_preserves_logical_state() {
   runtime.reset(123, 0);
 
   AuroraInputFrame inputs;
-  inputs.powerLed = true;
+  inputs.powerLed = SignalState::High;
   inputs.stripPowerPresent = true;
   runtime.step(inputs, 0);
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PcState::Running),

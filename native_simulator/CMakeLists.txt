@@ -21,8 +21,32 @@ target_link_libraries(aurora_simulator
         imgui::imgui
 )
 
-if(MSVC OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+if(MSVC)
     target_compile_options(aurora_simulator PRIVATE /W4)
 else()
     target_compile_options(aurora_simulator PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(aurora_simulator_session_test
+        test/simulator_session_test.cpp
+        src/simulator_session.cpp
+    )
+    target_compile_features(aurora_simulator_session_test PRIVATE cxx_std_17)
+    set_target_properties(aurora_simulator_session_test
+        PROPERTIES CXX_EXTENSIONS OFF
+    )
+    target_include_directories(aurora_simulator_session_test
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_link_libraries(aurora_simulator_session_test PRIVATE aurora::core)
+    if(MSVC)
+        target_compile_options(aurora_simulator_session_test PRIVATE /W4)
+    else()
+        target_compile_options(aurora_simulator_session_test
+            PRIVATE -Wall -Wextra -Wpedantic
+        )
+    endif()
+    add_test(NAME aurora_simulator_session
+             COMMAND aurora_simulator_session_test)
 endif()

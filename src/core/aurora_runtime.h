@@ -10,20 +10,14 @@
 #include "rgb8.h"
 
 struct AuroraInputFrame {
-  bool powerLed = false;
-  bool hddLed = false;
-  uint8_t hddActiveEdges = 0;
+  SignalState powerLed = SignalState::Low;
 
-  bool powerButton = false;
-  bool powerButtonPressed = false;
-  bool powerButtonReleased = false;
+  SignalState hddLed = SignalState::Low;
+  // Signed normalized activity delta in Q8.8 units for the elapsed interval.
+  int16_t hddContribution = 0;
 
-  bool resetButton = false;
-  bool resetButtonPressed = false;
-  bool resetButtonReleased = false;
-
-  bool debugButton = false;
-  bool debugButtonPressed = false;
+  SignalState powerButton = SignalState::Low;
+  SignalState resetButton = SignalState::Low;
 
   bool stripPowerPresent = false;
 };
@@ -87,9 +81,10 @@ class AuroraRuntime {
   void reset(uint32_t seed, uint32_t nowMs = 0);
 
   // Applies one normalized input snapshot at one explicit uint32_t timestamp.
-  // Callers must supply input edges in regular logical substeps; a large time
-  // jump cannot reconstruct edges that were never observed. Elapsed-time
-  // arithmetic is intentionally unsigned and wraparound-safe.
+  // The frame carries current signal levels and any transitions observed since
+  // the previous call. Elapsed-time behavior stays inside the core; callers do
+  // not need to use a fixed tick. Time arithmetic is unsigned and wraparound-
+  // safe.
   void step(const AuroraInputFrame &inputs, uint32_t nowMs);
 
   // Platform adapters may request that the next step calculate a fresh frame,
@@ -122,7 +117,6 @@ class AuroraRuntime {
   uint32_t frameIntervalMs_;
   uint32_t lastHddUpdateMs_;
   uint32_t lastFrameMs_;
-  uint8_t pendingHddEdges_;
   bool renderPending_;
   bool lastLogicalStripPowerPresent_;
 };

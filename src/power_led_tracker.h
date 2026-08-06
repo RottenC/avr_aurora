@@ -14,7 +14,7 @@ class PowerLedTracker {
 public:
   explicit PowerLedTracker(const PowerLedTrackerConfig &config) : config_(config) {}
   void reset();
-  void update(bool active, uint32_t nowMs);
+  void update(SignalState state, uint32_t nowMs);
   PowerLedMode mode(uint32_t nowMs) const;
 private:
   PowerLedTrackerConfig config_;

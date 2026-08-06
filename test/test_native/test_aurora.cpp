@@ -164,7 +164,7 @@ void test_aurora_fixed_step_grouping_matches() {
   assertFieldsEqual(step100, step200);
 }
 
-void test_aurora_python_parity_checkpoints() {
+void test_aurora_deterministic_checkpoints() {
   struct Checkpoint {
     uint16_t tick;
     uint32_t hash;
@@ -194,5 +194,5 @@ void runAuroraTests() {
   RUN_TEST(test_aurora_diffusion_uses_open_out_of_place_boundaries);
   RUN_TEST(test_aurora_overlap_color_peak_and_rgb_anchors);
   RUN_TEST(test_aurora_fixed_step_grouping_matches);
-  RUN_TEST(test_aurora_python_parity_checkpoints);
+  RUN_TEST(test_aurora_deterministic_checkpoints);
 }

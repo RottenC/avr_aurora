@@ -98,7 +98,6 @@ AuroraRuntime::AuroraRuntime(const AuroraRuntimeConfig &config)
                                                    : config.frameIntervalMs),
       lastHddUpdateMs_(0),
       lastFrameMs_(0),
-      pendingHddEdges_(0),
       renderPending_(true),
       lastLogicalStripPowerPresent_(false) {
   reset(config.auroraField.zeroSeedFallback, 0);
@@ -115,7 +114,6 @@ void AuroraRuntime::reset(uint32_t seed, uint32_t nowMs) {
   snapshot_.stateStartedAtMs = nowMs;
   lastHddUpdateMs_ = nowMs;
   lastFrameMs_ = nowMs;
-  pendingHddEdges_ = 0;
   renderPending_ = true;
   lastLogicalStripPowerPresent_ = false;
 }
@@ -131,20 +129,12 @@ void AuroraRuntime::step(const AuroraInputFrame &inputs, uint32_t nowMs) {
     renderPending_ = true;
   }
 
-  const uint16_t edgeTotal =
-      static_cast<uint16_t>(pendingHddEdges_) + inputs.hddActiveEdges;
-  pendingHddEdges_ =
-      static_cast<uint8_t>(edgeTotal > UINT8_MAX ? UINT8_MAX : edgeTotal);
-
   powerLed_.update(inputs.powerLed, nowMs);
   const PowerLedMode powerMode = powerLed_.mode(nowMs);
 
-  if (nowMs - lastHddUpdateMs_ >= hdd_.updateIntervalMs()) {
-    const uint32_t elapsedMs = nowMs - lastHddUpdateMs_;
-    lastHddUpdateMs_ = nowMs;
-    hdd_.update(inputs.hddLed, pendingHddEdges_, elapsedMs);
-    pendingHddEdges_ = 0;
-  }
+  const uint32_t hddElapsedMs = nowMs - lastHddUpdateMs_;
+  lastHddUpdateMs_ = nowMs;
+  hdd_.update(inputs.hddLed, inputs.hddContribution, hddElapsedMs);
 
   const PcState stateBeforeStep = pc_.state();
   const TransitionEffect transitionBeforeStep = effects_.current();
@@ -153,10 +143,10 @@ void AuroraRuntime::step(const AuroraInputFrame &inputs, uint32_t nowMs) {
   const TransitionEffect finishedEffect = effects_.consumeFinished();
   const PcStateInputs pcInputs = {
       inputs.stripPowerPresent,
-      inputs.powerButton,
-      inputs.powerButtonPressed,
-      inputs.powerButtonReleased,
-      inputs.resetButtonPressed,
+      signalIsHigh(inputs.powerButton),
+      signalIsRising(inputs.powerButton),
+      signalIsFalling(inputs.powerButton),
+      signalIsRising(inputs.resetButton),
       powerMode,
       finishedEffect == TransitionEffect::Startup,
   };

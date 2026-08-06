@@ -23,7 +23,6 @@ constexpr uint32_t ResetDurationMs = 900;
 constexpr uint32_t StartingTimeoutMs = 30000;
 constexpr uint32_t ShutdownWarningTimeoutMs = 120000;
 
-constexpr uint8_t HddEdgeBoost = 20;
 constexpr uint8_t HddActiveRise = 3;
 constexpr uint8_t HddInactiveDecay = 2;
 constexpr uint8_t HddMax = 128;
@@ -75,7 +74,7 @@ constexpr PowerLedTrackerConfig powerLedTrackerConfig() {
 }
 
 constexpr HddActivityConfig hddActivityConfig() {
-  return {HddUpdateMs, HddEdgeBoost, HddActiveRise, HddInactiveDecay, HddMax};
+  return {HddUpdateMs, HddActiveRise, HddInactiveDecay, HddMax};
 }
 
 constexpr PcStateConfig pcStateConfig() {

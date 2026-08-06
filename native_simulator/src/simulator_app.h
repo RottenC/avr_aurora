@@ -13,5 +13,4 @@ class SimulatorApp {
 
  private:
   SimulatorSession session_;
-  double accumulatorMs_ = 0.0;
 };

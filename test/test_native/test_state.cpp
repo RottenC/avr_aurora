@@ -257,20 +257,25 @@ void test_auto_14_effect_cancellation_is_specific_and_state_compatible() {
                           static_cast<uint8_t>(effects.current()));
 }
 
-void test_auto_15_hdd_edges_accumulate_without_changing_fixed_time_ticks() {
-  HddActivity hdd({Config::HddUpdateMs,
-                   Config::HddEdgeBoost,
-                   Config::HddActiveRise,
-                   Config::HddInactiveDecay,
-                   Config::HddMax});
-  hdd.update(false, 3, Config::HddUpdateMs);
-  TEST_ASSERT_EQUAL_UINT8(Config::HddEdgeBoost * 3 - Config::HddInactiveDecay, hdd.value());
+void test_auto_15_hdd_level_and_contribution_smoothing() {
+  HddActivity hdd(Config::hddActivityConfig());
+  hdd.update(SignalState::High, 0, Config::HddUpdateMs);
+  TEST_ASSERT_EQUAL_UINT8(Config::HddActiveRise, hdd.value());
 
-  const uint16_t elapsed = Config::HddUpdateMs * 3 + Config::HddUpdateMs - 1;
-  hdd.update(false, 0, elapsed);
-  TEST_ASSERT_EQUAL_UINT8(Config::HddEdgeBoost * 3 - Config::HddInactiveDecay * 4, hdd.value());
+  hdd.update(SignalState::Low, 0, Config::HddUpdateMs);
+  TEST_ASSERT_EQUAL_UINT8(Config::HddActiveRise -
+                              Config::HddInactiveDecay,
+                          hdd.value());
 
-  hdd.update(true, UINT8_MAX, Config::HddUpdateMs);
+  hdd.reset();
+  hdd.update(SignalState::Blinking, 64, 0);
+  TEST_ASSERT_EQUAL_UINT8(0, hdd.value());
+  hdd.update(SignalState::Blinking, 64, 0);
+  hdd.update(SignalState::Blinking, 64, 0);
+  hdd.update(SignalState::Blinking, 64, 0);
+  TEST_ASSERT_EQUAL_UINT8(1, hdd.value());
+
+  hdd.update(SignalState::High, 0, UINT32_MAX);
   TEST_ASSERT_EQUAL_UINT8(Config::HddMax, hdd.value());
 }
 
@@ -280,14 +285,14 @@ void test_auto_16_power_led_tracker_preserves_off_grace_and_blink_timing() {
                            Config::PowerLedBlinkMaxHalfPeriodMs,
                            Config::PowerLedBlinkStaleMs,
                            Config::PowerLedBlinkEdgesRequired});
-  tracker.update(false, 0);
+  tracker.update(SignalState::Low, 0);
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PowerLedMode::Off),
                           static_cast<uint8_t>(tracker.mode(1)));
 
-  tracker.update(true, 200);
-  tracker.update(false, 400);
-  tracker.update(true, 600);
-  tracker.update(false, 800);
+  tracker.update(SignalState::Rising, 200);
+  tracker.update(SignalState::Falling, 400);
+  tracker.update(SignalState::Rising, 600);
+  tracker.update(SignalState::Falling, 800);
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PowerLedMode::Blinking),
                           static_cast<uint8_t>(tracker.mode(800)));
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PowerLedMode::Off),
@@ -398,22 +403,31 @@ void test_auto_23_strip_power_loss_while_running_preserves_logic() {
 }
 
 void test_auto_24_large_hdd_elapsed_interval_saturates_and_decays() {
-  HddActivity hdd({Config::HddUpdateMs, Config::HddEdgeBoost, Config::HddActiveRise, Config::HddInactiveDecay, Config::HddMax});
-  hdd.update(true, UINT8_MAX, UINT32_MAX);
+  HddActivity hdd(Config::hddActivityConfig());
+  hdd.update(SignalState::Rising, 0, UINT32_MAX);
   TEST_ASSERT_EQUAL_UINT8(Config::HddMax, hdd.value());
-  hdd.update(false, 0, UINT32_MAX);
+  hdd.update(SignalState::Falling, 0, UINT32_MAX);
   TEST_ASSERT_EQUAL_UINT8(0, hdd.value());
-  hdd.update(false, 2, Config::HddUpdateMs);
+  hdd.update(SignalState::Blinking, INT16_MAX, 0);
+  hdd.update(SignalState::Blinking, INT16_MAX, 0);
+  TEST_ASSERT_EQUAL_UINT8(Config::HddMax, hdd.value());
+  hdd.update(SignalState::Blinking, INT16_MIN, 0);
   TEST_ASSERT_TRUE(hdd.value() <= Config::HddMax);
 }
 
 void test_auto_25_invalid_power_led_blink_periods_and_stale() {
   PowerLedTracker tracker({Config::ShortPowerLedOffIgnoreMs, Config::PowerLedBlinkMinHalfPeriodMs, Config::PowerLedBlinkMaxHalfPeriodMs, Config::PowerLedBlinkStaleMs, Config::PowerLedBlinkEdgesRequired});
-  tracker.update(false, 0);
-  tracker.update(true, Config::PowerLedBlinkMinHalfPeriodMs - 1);
+  tracker.update(SignalState::Low, 0);
+  tracker.update(SignalState::Rising,
+                 Config::PowerLedBlinkMinHalfPeriodMs - 1);
   TEST_ASSERT_NOT_EQUAL(static_cast<uint8_t>(PowerLedMode::Blinking), static_cast<uint8_t>(tracker.mode(Config::PowerLedBlinkMinHalfPeriodMs)));
   PowerLedTracker mixed({Config::ShortPowerLedOffIgnoreMs, Config::PowerLedBlinkMinHalfPeriodMs, Config::PowerLedBlinkMaxHalfPeriodMs, Config::PowerLedBlinkStaleMs, Config::PowerLedBlinkEdgesRequired});
-  mixed.update(false, 0); mixed.update(true, 200); mixed.update(false, 5000); mixed.update(true, 5200); mixed.update(false, 5400); mixed.update(true, 5600);
+  mixed.update(SignalState::Low, 0);
+  mixed.update(SignalState::Rising, 200);
+  mixed.update(SignalState::Falling, 5000);
+  mixed.update(SignalState::Rising, 5200);
+  mixed.update(SignalState::Falling, 5400);
+  mixed.update(SignalState::Rising, 5600);
   TEST_ASSERT_NOT_EQUAL(static_cast<uint8_t>(PowerLedMode::Blinking), static_cast<uint8_t>(mixed.mode(5600)));
 }
 
@@ -437,7 +451,7 @@ void test_auto_26_startup_animation_finish_waits_for_power_led() {
 
 void test_auto_27_boot_running_and_sleeping_are_separate() {
   PowerLedTracker running({Config::ShortPowerLedOffIgnoreMs, Config::PowerLedBlinkMinHalfPeriodMs, Config::PowerLedBlinkMaxHalfPeriodMs, Config::PowerLedBlinkStaleMs, Config::PowerLedBlinkEdgesRequired});
-  running.update(true, 0);
+  running.update(SignalState::High, 0);
   PcStateMachine pc = makePcStateMachine();
   pc.update(makeInputs(running.mode(0)), 0);
   pc.update(makeInputs(running.mode(10000)), 10000);
@@ -445,12 +459,28 @@ void test_auto_27_boot_running_and_sleeping_are_separate() {
 
   PowerLedTracker sleep({Config::ShortPowerLedOffIgnoreMs, Config::PowerLedBlinkMinHalfPeriodMs, Config::PowerLedBlinkMaxHalfPeriodMs, Config::PowerLedBlinkStaleMs, Config::PowerLedBlinkEdgesRequired});
   PcStateMachine sleeper = makePcStateMachine();
-  sleep.update(true, 0); sleeper.update(makeInputs(sleep.mode(0)), 0);
-  sleep.update(false, 500); sleeper.update(makeInputs(sleep.mode(500)), 500);
-  sleep.update(true, 1000); sleeper.update(makeInputs(sleep.mode(1000)), 1000);
-  sleep.update(false, 1500); sleeper.update(makeInputs(sleep.mode(1500)), 1500);
-  sleep.update(true, 2000); sleeper.update(makeInputs(sleep.mode(2000)), 2000);
+  sleep.update(SignalState::High, 0);
+  sleeper.update(makeInputs(sleep.mode(0)), 0);
+  sleep.update(SignalState::Falling, 500);
+  sleeper.update(makeInputs(sleep.mode(500)), 500);
+  sleep.update(SignalState::Rising, 1000);
+  sleeper.update(makeInputs(sleep.mode(1000)), 1000);
+  sleep.update(SignalState::Falling, 1500);
+  sleeper.update(makeInputs(sleep.mode(1500)), 1500);
+  sleep.update(SignalState::Rising, 2000);
+  sleeper.update(makeInputs(sleep.mode(2000)), 2000);
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PcState::Sleeping), static_cast<uint8_t>(sleeper.state()));
+}
+
+void test_auto_29_signal_state_helpers_preserve_edge_levels() {
+  TEST_ASSERT_TRUE(signalIsHigh(SignalState::Rising));
+  TEST_ASSERT_TRUE(signalIsHigh(SignalState::High));
+  TEST_ASSERT_FALSE(signalIsHigh(SignalState::Falling));
+  TEST_ASSERT_FALSE(signalIsHigh(SignalState::Blinking));
+  TEST_ASSERT_TRUE(signalIsRising(SignalState::Rising));
+  TEST_ASSERT_FALSE(signalIsRising(SignalState::High));
+  TEST_ASSERT_TRUE(signalIsFalling(SignalState::Falling));
+  TEST_ASSERT_FALSE(signalIsFalling(SignalState::Low));
 }
 
 void test_auto_28_await_shutdown_timeout_and_off() {
@@ -482,7 +512,7 @@ int main(int, char **) {
   RUN_TEST(test_auto_12_transition_priority_restart_and_completion);
   RUN_TEST(test_auto_13_forced_transition_has_highest_priority_and_stays_latched);
   RUN_TEST(test_auto_14_effect_cancellation_is_specific_and_state_compatible);
-  RUN_TEST(test_auto_15_hdd_edges_accumulate_without_changing_fixed_time_ticks);
+  RUN_TEST(test_auto_15_hdd_level_and_contribution_smoothing);
   RUN_TEST(test_auto_16_power_led_tracker_preserves_off_grace_and_blink_timing);
   RUN_TEST(test_auto_17_forced_shutdown_boundary);
   RUN_TEST(test_auto_18_millis_overflow_state_and_effect_timing);
@@ -495,6 +525,7 @@ int main(int, char **) {
   RUN_TEST(test_auto_26_startup_animation_finish_waits_for_power_led);
   RUN_TEST(test_auto_27_boot_running_and_sleeping_are_separate);
   RUN_TEST(test_auto_28_await_shutdown_timeout_and_off);
+  RUN_TEST(test_auto_29_signal_state_helpers_preserve_edge_levels);
   runAuroraTests();
   runRuntimeTests();
   runStripPowerSafetyTests();

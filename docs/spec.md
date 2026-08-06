@@ -17,6 +17,18 @@
 - FastLED hard current limit: 2000 mA at 5 V.
 - Recommended electrical protection: 330–470 ohm series resistor on data; power injection at both strip ends.
 
+The AVR pin assignment is:
+
+| Function | Arduino Pro Mini pin | Configuration constant |
+| --- | --- | --- |
+| WS2812B data | D9 | `AvrConfig::LedDataPin` |
+| Power LED sense | D3 | `AvrConfig::PowerLedPin` |
+| HDD LED sense | D2 | `AvrConfig::HddLedPin` |
+| Power button sense | D4 | `AvrConfig::PowerButtonPin` |
+| Reset button sense | D5 | `AvrConfig::ResetButtonPin` |
+| Strip power present | D7 | `AvrConfig::StripPowerPresentPin` |
+| Aurora entropy input (left unconnected) | A0 | `AvrConfig::AuroraEntropyPin` |
+
 ## Observed inputs
 
 The controller passively observes these front-panel lines through safe interface circuitry:
@@ -26,9 +38,23 @@ The controller passively observes these front-panel lines through safe interface
 3. Power button.
 4. Reset button.
 5. Strip power present.
-6. Temporary debug mode button.
 
-Power/HDD LED polarity is not assumed at the logical layer. Hardware adapters and input configuration normalize each input to an active boolean.
+Power/HDD LED polarity is not assumed at the logical layer. Hardware adapters
+and input configuration normalize digital observations to:
+
+```cpp
+enum class SignalState : uint8_t {
+    Low,
+    Rising,
+    High,
+    Falling,
+    Blinking,
+};
+```
+
+`Rising` is active now and reports a Low-to-High transition for the current
+runtime update. `Falling` is inactive now and reports a High-to-Low transition.
+AVR debounce is platform-specific and remains outside the portable core.
 
 Buttons remain directly connected to the motherboard. The controller never blocks or emulates them.
 
@@ -113,14 +139,21 @@ Exact timing thresholds are configurable and initially conservative.
 
 ## HDD activity
 
-Expose a smoothed activity value in the inclusive range 0..128.
+Expose a smoothed activity value in the inclusive range 0..128. The normalized
+HDD input contains a `SignalState` plus a signed `hddContribution` in Q8.8
+activity units for the elapsed interval.
 
-Hybrid model:
-
-- Rising edge adds a configurable boost.
-- Active level adds a configurable amount per update interval.
-- Activity decays symmetrically/configurably when inactive.
+- `High` and `Rising` increase activity according to elapsed time.
+- `Low` and `Falling` decrease activity according to elapsed time.
+- `Blinking` applies the normalized contribution without inventing an edge
+  boost.
+- Integer division remainders are retained so small intervals and
+  contributions can accumulate.
 - Saturate to 0..128.
+
+The AVR adapter samples the HDD level without an interrupt counter. Reintroduce
+an HDD edge interrupt only if measurements on real hardware show that ordinary
+sampling loses visually significant activity.
 
 Ambient effect settings contain independent flags for whether HDD activity affects:
 
@@ -182,13 +215,21 @@ Maintain one or two random dim points across LEDs 0..55. They appear and fade sl
 
 - No runtime `delay()` calls.
 - Poll and debounce ordinary inputs on a short periodic timer.
-- Use an HDD edge interrupt only if the selected hardware circuit and FastLED timing make it worthwhile.
+- HDD input is ordinarily sampled; there is no edge counter in the normalized
+  core API.
 - Initial render target: 50 FPS.
 - Serial debug output must be rate-limited and must not affect animation timing.
 
-## Debug mode selection
+## Native simulator
 
-A temporary button cycles available ambient modes for development. No EEPROM persistence is required. The final firmware may expose only the Aurora mode.
+The C++ core is the only source of behavior. The SDL2/Dear ImGui simulator
+advances explicit `uint32_t` simulation time and calls `AuroraRuntime::step()`
+at most once per UI update. It does not use a fixed frontend logic tick or a
+substep catch-up loop. Frame scheduling, smoothing, field evolution, and
+transitions remain inside the core.
+
+The Python/PySide workbench is not a behavioral reference and is not used for
+FSM, HDD, Power LED, effect, or parity validation.
 
 ## Future extension
 
