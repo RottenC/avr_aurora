@@ -1,0 +1,40 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 24,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "native-simulator-vcpkg",
+            "displayName": "Native simulator (vcpkg)",
+            "description": "Build aurora_simulator and core tests with vcpkg dependencies",
+            "generator": "Ninja Multi-Config",
+            "binaryDir": "${sourceDir}/build/native-simulator-vcpkg",
+            "cacheVariables": {
+                "AURORA_BUILD_SIMULATOR": "ON",
+                "BUILD_TESTING": "ON",
+                "CMAKE_TOOLCHAIN_FILE": {
+                    "type": "FILEPATH",
+                    "value": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+                },
+                "VCPKG_MANIFEST_DIR": {
+                    "type": "PATH",
+                    "value": "${sourceDir}/native_simulator"
+                }
+            }
+          }
+    ],
+    "buildPresets": [
+        {
+            "name": "native-simulator-vcpkg",
+            "displayName": "Build native simulator (vcpkg)",
+            "configurePreset": "native-simulator-vcpkg",
+            "configuration": "Debug",
+            "targets": [
+                "aurora_simulator"
+            ]
+        }
+    ]
+}

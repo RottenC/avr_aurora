@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "avr-aurora-native-simulator",
+  "version-string": "0.1.0",
+  "builtin-baseline": "9e593bb18ea69cc5095e012465dcd675a822ed0d",
+  "dependencies": [
+    "sdl2",
+    {
+      "name": "imgui",
+      "default-features": false,
+      "features": [
+        "sdl2-binding",
+        "sdl2-renderer-binding"
+      ]
+    }
+  ],
+  "overrides": [
+    {
+      "name": "imgui",
+      "version": "1.91.0"
+    }
+  ]
+}

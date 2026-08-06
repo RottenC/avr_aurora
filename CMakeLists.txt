@@ -4,6 +4,8 @@ project(avr_aurora LANGUAGES CXX)
 
 include(CTest)
 
+option(AURORA_BUILD_SIMULATOR "Build AVR Aurora native simulator" OFF)
+
 add_library(aurora_core STATIC
     src/core/aurora_runtime.cpp
     src/core/portable_math.cpp
@@ -30,6 +32,10 @@ if(MSVC)
     target_compile_options(aurora_core PRIVATE /W4)
 else()
     target_compile_options(aurora_core PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+if(AURORA_BUILD_SIMULATOR)
+    add_subdirectory(native_simulator)
 endif()
 
 if(BUILD_TESTING)
