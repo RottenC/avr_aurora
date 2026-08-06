@@ -63,6 +63,7 @@ enum class AuroraConfigError : uint8_t {
   AuroraSpawnCountRange,
   AuroraSpawnCountExceedsLedCount,
   AuroraFadePeriodZero,
+  AuroraHddActivityMaximumZero,
   AuroraDiffusionKernelSumZero,
   AuroraDiffusionKernelSumMismatch,
   SleepIntervalZero,
@@ -94,6 +95,9 @@ class AuroraRuntime {
   const AuroraSnapshot &snapshot() const { return snapshot_; }
   const Aurora::Rgb8 *ledFrame() const { return renderer_.frame(); }
   uint8_t ledCount() const { return renderer_.ledCount(); }
+  Aurora::FieldCellDiagnostics auroraDiagnostics(uint8_t index) const {
+    return renderer_.auroraDiagnostics(index);
+  }
   AuroraConfigError configError() const { return configError_; }
   bool configValid() const {
     return configError_ == AuroraConfigError::None;

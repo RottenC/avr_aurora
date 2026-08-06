@@ -17,9 +17,9 @@ static_assert(Aurora::LedCount == 56,
 }  // namespace
 
 void drawLedView(const AuroraRuntime &runtime) {
-  ImGui::SetNextWindowPos(ImVec2(10.0F, 215.0F),
+  ImGui::SetNextWindowPos(ImVec2(780.0F, 10.0F),
                           ImGuiCond_FirstUseEver);
-  ImGui::SetNextWindowSize(ImVec2(1180.0F, 140.0F),
+  ImGui::SetNextWindowSize(ImVec2(410.0F, 140.0F),
                            ImGuiCond_FirstUseEver);
   if (!ImGui::Begin("LED frame")) {
     ImGui::End();

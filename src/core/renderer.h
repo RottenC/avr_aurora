@@ -11,8 +11,6 @@
 struct AuroraRendererConfig {
   SleepEffectConfig sleep;
   TransitionRenderConfig transition;
-  bool hddAffectsSpeed;
-  bool hddAffectsBrightness;
 };
 
 struct AuroraRenderContext {
@@ -39,6 +37,9 @@ class AuroraRenderer {
 
   const Aurora::Rgb8 *frame() const { return frame_; }
   uint8_t ledCount() const { return Aurora::LedCount; }
+  Aurora::FieldCellDiagnostics auroraDiagnostics(uint8_t index) const {
+    return aurora_.diagnostics(index);
+  }
 
  private:
   void deactivateAurora();

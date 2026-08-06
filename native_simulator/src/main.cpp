@@ -12,7 +12,7 @@
 namespace {
 
 constexpr int InitialWindowWidth = 1200;
-constexpr int InitialWindowHeight = 420;
+constexpr int InitialWindowHeight = 720;
 
 SDL_Renderer *createRenderer(SDL_Window *window) {
   SDL_Renderer *renderer =

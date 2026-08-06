@@ -2,6 +2,7 @@
 
 #include <imgui.h>
 
+#include "aurora_field_view.h"
 #include "led_view.h"
 #include "input_panel.h"
 
@@ -95,4 +96,5 @@ void SimulatorApp::draw() {
 
   drawLedView(session_.runtime());
   drawInputPanel(session_);
+  drawAuroraFieldView(session_.runtime());
 }

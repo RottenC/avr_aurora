@@ -18,6 +18,7 @@ Aurora::FieldConfig safeFieldConfig(const AuroraRuntimeConfig &runtimeConfig) {
     config.spawnMaxCount = 1;
   }
   if (config.ticksPerFade == 0) config.ticksPerFade = 1;
+  if (config.hddActivityMaximum == 0) config.hddActivityMaximum = 1;
 
   const uint16_t calculatedKernelSum =
       static_cast<uint16_t>(config.diffusionSideWeight) * 2U +
@@ -59,6 +60,9 @@ AuroraConfigError validateAuroraRuntimeConfig(
   }
   if (config.auroraField.ticksPerFade == 0) {
     return AuroraConfigError::AuroraFadePeriodZero;
+  }
+  if (config.auroraField.hddActivityMaximum == 0) {
+    return AuroraConfigError::AuroraHddActivityMaximumZero;
   }
   if (config.auroraField.diffusionKernelSum == 0) {
     return AuroraConfigError::AuroraDiffusionKernelSumZero;

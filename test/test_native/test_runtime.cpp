@@ -417,6 +417,11 @@ void test_runtime_20_invalid_update_intervals_are_rejected() {
   config = Config::runtimeConfig();
   config.auroraField.ticksPerFade = 0;
   assertConfigError(config, AuroraConfigError::AuroraFadePeriodZero);
+
+  config = Config::runtimeConfig();
+  config.auroraField.hddActivityMaximum = 0;
+  assertConfigError(config,
+                    AuroraConfigError::AuroraHddActivityMaximumZero);
 }
 
 void test_runtime_21_invalid_spawn_ranges_are_rejected() {

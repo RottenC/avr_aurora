@@ -3,6 +3,11 @@
 namespace {
 
 constexpr uint16_t kQ8_8Max = static_cast<uint16_t>(UINT8_MAX) << 8;
+constexpr uint16_t kOneQ8_8 = 1U << 8;
+
+uint16_t maxQ8_8(uint16_t left, uint16_t right) {
+  return left > right ? left : right;
+}
 
 Aurora::Rgb8 unpackRgb(uint32_t packed) {
   return {static_cast<uint8_t>(packed >> 16),
@@ -39,6 +44,7 @@ Field::Field(const FieldConfig &config)
       fixedStepAccumulatorMs_(0),
       ticksUntilNextSpawn_(1),
       ticksUntilFade_(config.ticksPerFade),
+      spawnRateRemainderQ0_8_(0),
       currentBank_(0) {
   reset(1);
 }
@@ -50,15 +56,21 @@ void Field::reset(uint32_t seed) {
       colorProgress_[bank][index] = 0;
     }
   }
+  for (uint8_t index = 0; index < LedCount; ++index) {
+    backgroundBrightness_[index] = 0;
+  }
 
   currentBank_ = 0;
   prngState_ = seed == 0 ? config_.zeroSeedFallback : seed;
   fixedStepAccumulatorMs_ = 0;
   ticksUntilFade_ = config_.ticksPerFade;
+  spawnRateRemainderQ0_8_ = 0;
   scheduleNextSpawn();
 }
 
-void Field::advance(uint32_t elapsedMs) {
+void Field::advance(uint32_t elapsedMs, uint8_t hddActivity) {
+  updateBackground(hddActivity);
+
   const uint32_t untilNextTick = config_.fixedStepMs - fixedStepAccumulatorMs_;
   if (elapsedMs < untilNextTick) {
     fixedStepAccumulatorMs_ += elapsedMs;
@@ -67,10 +79,10 @@ void Field::advance(uint32_t elapsedMs) {
 
   elapsedMs -= untilNextTick;
   fixedStepAccumulatorMs_ = 0;
-  fixedTick();
+  fixedTick(hddActivity);
   while (elapsedMs >= config_.fixedStepMs) {
     elapsedMs -= config_.fixedStepMs;
-    fixedTick();
+    fixedTick(hddActivity);
   }
   fixedStepAccumulatorMs_ = elapsedMs;
 }
@@ -83,13 +95,31 @@ Rgb8 Field::pixel(uint8_t index) const {
   const Rgb8 color2 = unpackRgb(config_.color2Rgb);
   const Rgb8 flare =
       lerpRgb(color1, color2, colorProgress_[currentBank_][index]);
-  const uint8_t brightness =
-      static_cast<uint8_t>(brightness_[currentBank_][index] >> 8);
+  const uint16_t outputBrightness =
+      maxQ8_8(brightness_[currentBank_][index],
+              backgroundBrightness_[index]);
+  const uint8_t brightness = static_cast<uint8_t>(outputBrightness >> 8);
   return lerpRgb(background, flare, brightness);
+}
+
+FieldCellDiagnostics Field::diagnostics(uint8_t index) const {
+  if (index >= LedCount) return {};
+  const uint8_t progress = colorProgress_[currentBank_][index];
+  return {
+      brightness_[currentBank_][index],
+      backgroundBrightness_[index],
+      progress,
+      lerpRgb(unpackRgb(config_.color1Rgb), unpackRgb(config_.color2Rgb),
+              progress),
+  };
 }
 
 uint16_t Field::brightnessQ8_8(uint8_t index) const {
   return index < LedCount ? brightness_[currentBank_][index] : 0;
+}
+
+uint16_t Field::backgroundBrightnessQ8_8(uint8_t index) const {
+  return index < LedCount ? backgroundBrightness_[index] : 0;
 }
 
 uint8_t Field::colorProgress(uint8_t index) const {
@@ -106,7 +136,7 @@ void Field::setCellForTest(uint8_t index, uint16_t brightnessQ8_8,
 }
 #endif
 
-void Field::fixedTick() {
+void Field::fixedTick(uint8_t hddActivity) {
   diffuseTick();
 
   --ticksUntilFade_;
@@ -115,12 +145,7 @@ void Field::fixedTick() {
   applyFadeAndColorTick(applyFade);
 
   currentBank_ ^= 1;
-
-  --ticksUntilNextSpawn_;
-  if (ticksUntilNextSpawn_ == 0) {
-    spawnStars();
-    scheduleNextSpawn();
-  }
+  advanceSpawnCountdown(hddActivity);
 }
 
 void Field::diffuseTick() {
@@ -223,6 +248,52 @@ void Field::applyFadeAndColorTick(bool applyFade) {
         config_.colorProgressStep;
     colorProgress_[nextBank][index] =
         progress > UINT8_MAX ? UINT8_MAX : static_cast<uint8_t>(progress);
+  }
+}
+
+void Field::updateBackground(uint8_t hddActivity) {
+  uint16_t brightnessQ8_8 = 0;
+  if (config_.hddAffectsBackground && config_.hddActivityMaximum != 0) {
+    const uint8_t boundedActivity =
+        hddActivity < config_.hddActivityMaximum
+            ? hddActivity
+            : config_.hddActivityMaximum;
+    const uint32_t maximumBrightnessQ8_8 =
+        static_cast<uint32_t>(config_.hddBackgroundMaxBrightness) << 8;
+    brightnessQ8_8 = static_cast<uint16_t>(
+        (maximumBrightnessQ8_8 * boundedActivity) /
+        config_.hddActivityMaximum);
+  }
+
+  for (uint8_t index = 0; index < LedCount; ++index) {
+    backgroundBrightness_[index] = brightnessQ8_8;
+  }
+}
+
+void Field::advanceSpawnCountdown(uint8_t hddActivity) {
+  uint16_t rateQ8_8 = kOneQ8_8;
+  if (config_.hddAffectsSpawnRate && config_.hddActivityMaximum != 0) {
+    const uint8_t boundedActivity =
+        hddActivity < config_.hddActivityMaximum
+            ? hddActivity
+            : config_.hddActivityMaximum;
+    rateQ8_8 += static_cast<uint16_t>(
+        (static_cast<uint32_t>(boundedActivity) * kOneQ8_8) /
+        config_.hddActivityMaximum);
+  }
+
+  const uint16_t progressQ8_8 =
+      rateQ8_8 + spawnRateRemainderQ0_8_;
+  uint8_t spawnTicks = static_cast<uint8_t>(progressQ8_8 >> 8);
+  spawnRateRemainderQ0_8_ = static_cast<uint8_t>(progressQ8_8);
+
+  while (spawnTicks > 0) {
+    --spawnTicks;
+    --ticksUntilNextSpawn_;
+    if (ticksUntilNextSpawn_ == 0) {
+      spawnStars();
+      scheduleNextSpawn();
+    }
   }
 }
 

@@ -50,32 +50,17 @@ void AuroraRenderer::render(const AuroraRenderContext &context) {
 void AuroraRenderer::deactivateAurora() { auroraActive_ = false; }
 
 void AuroraRenderer::renderAurora(uint8_t hddActivity, uint32_t nowMs) {
+  uint32_t elapsedMs = 0;
   if (!auroraActive_) {
     aurora_.reset(seed_);
-    lastAuroraUpdateMs_ = nowMs;
     auroraActive_ = true;
   } else {
-    uint32_t elapsedMs = nowMs - lastAuroraUpdateMs_;
-    if (config_.hddAffectsSpeed) {
-      elapsedMs +=
-          (elapsedMs * static_cast<uint32_t>(hddActivity)) / UINT8_MAX;
-    }
-    aurora_.advance(elapsedMs);
-    lastAuroraUpdateMs_ = nowMs;
+    elapsedMs = nowMs - lastAuroraUpdateMs_;
   }
+  lastAuroraUpdateMs_ = nowMs;
+  aurora_.advance(elapsedMs, hddActivity);
 
   for (uint8_t index = 0; index < Aurora::LedCount; ++index) {
-    Aurora::Rgb8 pixel = aurora_.pixel(index);
-    if (config_.hddAffectsBrightness) {
-      const uint16_t scale = static_cast<uint16_t>(UINT8_MAX) + hddActivity;
-      const auto brighten = [scale](uint8_t channel) {
-        const uint16_t result =
-            static_cast<uint16_t>((static_cast<uint32_t>(channel) * scale) /
-                                  UINT8_MAX);
-        return static_cast<uint8_t>(result > UINT8_MAX ? UINT8_MAX : result);
-      };
-      pixel = {brighten(pixel.r), brighten(pixel.g), brighten(pixel.b)};
-    }
-    frame_[index] = pixel;
+    frame_[index] = aurora_.pixel(index);
   }
 }

@@ -180,6 +180,12 @@ All effects are non-blocking functions of current time and local effect state.
 
 A flat, one-dimensional northern-lights style animation along all 56 LEDs. Parameters include base brightness, speed, spread, and color characteristics. HDD activity may increase speed and/or brightness.
 
+The HDD-reactive background illumination is stored separately from flare
+brightness as a 56-element Q8.8 array. Each LED uses the maximum of its flare
+and background brightness. At maximum HDD activity, the background reaches its
+configured maximum and the point-spawn rate doubles; diffusion, color
+progression, and fade timing do not speed up.
+
 ### Startup
 
 The aurora becomes brighter and spreads outward, flashes, then smoothly settles into the normal ambient animation.

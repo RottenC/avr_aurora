@@ -28,8 +28,9 @@ constexpr uint8_t HddActiveRise = 3;
 constexpr uint8_t HddInactiveDecay = 2;
 constexpr uint8_t HddMax = 128;
 
-constexpr bool AuroraHddAffectsSpeed = false;
-constexpr bool AuroraHddAffectsBrightness = false;
+constexpr bool AuroraHddAffectsSpawnRate = true;
+constexpr bool AuroraHddAffectsBackground = true;
+constexpr uint8_t AuroraHddBackgroundMaxBrightness = 128;
 constexpr uint16_t AuroraFixedStepMs = 20;
 constexpr uint8_t AuroraSpawnMinTicks = 20;
 constexpr uint8_t AuroraSpawnMaxTicks = 70;
@@ -101,7 +102,11 @@ constexpr Aurora::FieldConfig auroraFieldConfig() {
           AuroraBackgroundRgb,
           AuroraColor1Rgb,
           AuroraColor2Rgb,
-          AuroraZeroSeedFallback};
+          AuroraZeroSeedFallback,
+          HddMax,
+          AuroraHddBackgroundMaxBrightness,
+          AuroraHddAffectsSpawnRate,
+          AuroraHddAffectsBackground};
 }
 
 constexpr AuroraRendererConfig rendererConfig() {
@@ -126,9 +131,7 @@ constexpr AuroraRendererConfig rendererConfig() {
            ForcedHue,
            ForcedSaturation,
            ForcedInitialBrightness,
-           ForcedFlashBrightness},
-          AuroraHddAffectsSpeed,
-          AuroraHddAffectsBrightness};
+           ForcedFlashBrightness}};
 }
 
 constexpr AuroraRuntimeConfig runtimeConfig() {
@@ -147,6 +150,7 @@ static_assert(LedCount >= 3, "Aurora requires at least three LEDs");
 static_assert(FrameIntervalMs > 0, "Frame interval must be positive");
 static_assert(HddUpdateMs > 0, "HDD update interval must be positive");
 static_assert(AuroraFixedStepMs > 0, "Aurora fixed step must be positive");
+static_assert(HddMax > 0, "HDD activity maximum must be positive");
 static_assert(AuroraSpawnMinTicks > 0 &&
                   AuroraSpawnMinTicks <= AuroraSpawnMaxTicks,
               "Invalid Aurora spawn tick range");

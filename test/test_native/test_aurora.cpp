@@ -22,6 +22,8 @@ void assertFieldsEqual(const Aurora::Field &left, const Aurora::Field &right) {
   for (uint8_t index = 0; index < Config::LedCount; ++index) {
     TEST_ASSERT_EQUAL_UINT16(left.brightnessQ8_8(index),
                              right.brightnessQ8_8(index));
+    TEST_ASSERT_EQUAL_UINT16(left.backgroundBrightnessQ8_8(index),
+                             right.backgroundBrightnessQ8_8(index));
     TEST_ASSERT_EQUAL_UINT8(left.colorProgress(index),
                             right.colorProgress(index));
     const Aurora::Rgb8 leftPixel = left.pixel(index);
@@ -30,6 +32,8 @@ void assertFieldsEqual(const Aurora::Field &left, const Aurora::Field &right) {
     TEST_ASSERT_EQUAL_UINT8(leftPixel.g, rightPixel.g);
     TEST_ASSERT_EQUAL_UINT8(leftPixel.b, rightPixel.b);
   }
+  TEST_ASSERT_EQUAL_UINT8(left.spawnRateRemainderQ0_8(),
+                          right.spawnRateRemainderQ0_8());
 }
 
 uint32_t addHashByte(uint32_t hash, uint8_t value) {
@@ -164,6 +168,57 @@ void test_aurora_fixed_step_grouping_matches() {
   assertFieldsEqual(step100, step200);
 }
 
+void test_aurora_hdd_background_is_separate_and_composited_with_max() {
+  Aurora::Field field(Config::auroraFieldConfig());
+  field.reset(1);
+  field.advance(0, Config::HddMax);
+
+  const uint16_t expectedBackground =
+      static_cast<uint16_t>(Config::AuroraHddBackgroundMaxBrightness) << 8;
+  for (uint8_t index = 0; index < Config::LedCount; ++index) {
+    TEST_ASSERT_EQUAL_UINT16(expectedBackground,
+                             field.backgroundBrightnessQ8_8(index));
+    TEST_ASSERT_EQUAL_UINT16(0, field.brightnessQ8_8(index));
+  }
+  assertRgb(field.pixel(0), 17, 108, 101);
+
+  field.setCellForTest(0, static_cast<uint16_t>(64) << 8, 0);
+  assertRgb(field.pixel(0), 17, 108, 101);
+  field.setCellForTest(0, kQ8_8Max, 0);
+  assertRgb(field.pixel(0), 26, 186, 148);
+
+  const Aurora::FieldCellDiagnostics diagnostics = field.diagnostics(0);
+  TEST_ASSERT_EQUAL_UINT16(kQ8_8Max, diagnostics.brightnessQ8_8);
+  TEST_ASSERT_EQUAL_UINT16(expectedBackground,
+                           diagnostics.backgroundBrightnessQ8_8);
+  TEST_ASSERT_EQUAL_UINT8(0, diagnostics.colorProgress);
+  assertRgb(diagnostics.color, 26, 186, 148);
+
+  field.advance(0, UINT8_MAX);
+  TEST_ASSERT_EQUAL_UINT16(expectedBackground,
+                           field.backgroundBrightnessQ8_8(0));
+}
+
+void test_aurora_hdd_doubles_spawn_rate_at_maximum() {
+  Aurora::Field idle(Config::auroraFieldConfig());
+  Aurora::Field half(Config::auroraFieldConfig());
+  Aurora::Field saturated(Config::auroraFieldConfig());
+  idle.reset(1);
+  half.reset(1);
+  saturated.reset(1);
+
+  idle.advance(Config::AuroraFixedStepMs * 2U, 0);
+  half.advance(Config::AuroraFixedStepMs * 2U, Config::HddMax / 2);
+  saturated.advance(Config::AuroraFixedStepMs * 2U, Config::HddMax);
+  TEST_ASSERT_EQUAL_UINT8(36, idle.ticksUntilNextSpawn());
+  TEST_ASSERT_EQUAL_UINT8(35, half.ticksUntilNextSpawn());
+  TEST_ASSERT_EQUAL_UINT8(34, saturated.ticksUntilNextSpawn());
+
+  saturated.reset(1);
+  saturated.advance(Config::AuroraFixedStepMs * 19U, Config::HddMax);
+  TEST_ASSERT_NOT_EQUAL(Aurora::xorshift32(1), saturated.prngState());
+}
+
 void test_aurora_deterministic_checkpoints() {
   struct Checkpoint {
     uint16_t tick;
@@ -194,5 +249,7 @@ void runAuroraTests() {
   RUN_TEST(test_aurora_diffusion_uses_open_out_of_place_boundaries);
   RUN_TEST(test_aurora_overlap_color_peak_and_rgb_anchors);
   RUN_TEST(test_aurora_fixed_step_grouping_matches);
+  RUN_TEST(test_aurora_hdd_background_is_separate_and_composited_with_max);
+  RUN_TEST(test_aurora_hdd_doubles_spawn_rate_at_maximum);
   RUN_TEST(test_aurora_deterministic_checkpoints);
 }
