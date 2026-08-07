@@ -8,11 +8,6 @@
 #include "geometry.h"
 #include "rgb8.h"
 
-struct AuroraRendererConfig {
-  SleepEffectConfig sleep;
-  TransitionRenderConfig transition;
-};
-
 struct AuroraRenderContext {
   PcState pcState = PcState::Off;
   TransitionEffect transition = TransitionEffect::None;
@@ -29,8 +24,7 @@ struct AuroraRenderContext {
 
 class AuroraRenderer {
  public:
-  AuroraRenderer(const AuroraRendererConfig &config,
-                 const Aurora::FieldConfig &fieldConfig);
+  AuroraRenderer();
 
   void reset(uint32_t seed, uint32_t nowMs = 0);
   void render(const AuroraRenderContext &context);
@@ -45,7 +39,6 @@ class AuroraRenderer {
   void deactivateAurora();
   void renderAurora(uint8_t hddActivity, uint32_t nowMs);
 
-  AuroraRendererConfig config_;
   Aurora::Field aurora_;
   Aurora::Rgb8 frame_[Aurora::LedCount];
   uint32_t seed_;

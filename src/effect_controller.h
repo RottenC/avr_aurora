@@ -3,15 +3,8 @@
 #include <stdint.h>
 #include "state_types.h"
 
-struct EffectControllerConfig {
-  uint32_t startupDurationMs;
-  uint32_t shutdownDurationMs;
-  uint32_t resetDurationMs;
-};
-
 class EffectController {
 public:
-  explicit EffectController(const EffectControllerConfig &config) : config_(config) {}
   void reset();
   void request(TransitionEffect effect, uint32_t nowMs);
   void restart(TransitionEffect effect, uint32_t nowMs);
@@ -29,7 +22,6 @@ private:
   static uint8_t priority(TransitionEffect effect);
   static bool isCompatible(TransitionEffect effect, PcState state);
 
-  EffectControllerConfig config_;
   TransitionEffect current_ = TransitionEffect::None;
   TransitionEffect finished_ = TransitionEffect::None;
   uint32_t startedAt_ = 0;

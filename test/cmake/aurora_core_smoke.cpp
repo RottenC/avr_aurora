@@ -1,10 +1,8 @@
 #include <aurora/aurora_runtime.h>
 
-#include "config.h"
-
 int main() {
-  AuroraRuntime runtime(Config::runtimeConfig());
-  if (!runtime.configValid() || runtime.ledCount() != Aurora::LedCount) {
+  AuroraRuntime runtime;
+  if (runtime.ledCount() != Aurora::LedCount) {
     return 1;
   }
 

@@ -182,9 +182,19 @@ A flat, one-dimensional northern-lights style animation along all 56 LEDs. Param
 
 The HDD-reactive background illumination is stored separately from flare
 brightness as a 56-element Q8.8 array. Each LED uses the maximum of its flare
-and background brightness. At maximum HDD activity, the background reaches its
-configured maximum and the point-spawn rate doubles; diffusion, color
-progression, and fade timing do not speed up.
+and background brightness. Its spatial texture averages two adjacent
+deterministic 8-bit hash samples with a triangular wave whose phase advances
+three steps per LED. HDD activity scales that texture up to the configured
+background maximum. At maximum HDD activity the point-spawn rate doubles;
+diffusion and fade timing do not speed up. A nonzero HDD background advances
+the affected cell's color progress even when its flare brightness is zero. A
+cell retains its color progress after both sources reach zero; progress resets
+only when a new flare is spawned in that cell. The background has an
+independent two-second full-scale release, so it fades more slowly without
+extending the HDD-driven point-spawn rate. Color progress is diffused as an
+independent field with the same center/side kernel as flare brightness. It is
+normalized at the physical strip ends so uniform color remains uniform, and
+transitions between neighboring flare peaks stay smooth.
 
 ### Startup
 

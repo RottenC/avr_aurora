@@ -7,7 +7,6 @@ add_executable(aurora_simulator
     src/main.cpp
     src/simulator_app.cpp
     src/simulator_session.cpp
-    src/led_view.cpp
     src/aurora_field_view.cpp
     src/input_panel.cpp
     src/virtual_inputs.cpp

@@ -1,13 +1,11 @@
 #include "renderer.h"
 
+#include "../config.h"
 #include "../effects/effects.h"
 #include "portable_math.h"
 
-AuroraRenderer::AuroraRenderer(const AuroraRendererConfig &config,
-                               const Aurora::FieldConfig &fieldConfig)
-    : config_(config),
-      aurora_(fieldConfig),
-      seed_(fieldConfig.zeroSeedFallback),
+AuroraRenderer::AuroraRenderer()
+    : seed_(Config::AuroraZeroSeedFallback),
       lastAuroraUpdateMs_(0),
       auroraActive_(false) {
   Aurora::fillRgb(frame_, Aurora::LedCount, {0, 0, 0});
@@ -33,14 +31,13 @@ void AuroraRenderer::render(const AuroraRenderContext &context) {
     renderTransition(frame_, Aurora::LedCount, context.transition,
                      context.transitionStartedAtMs,
                      context.transitionElapsedMs,
-                     context.transitionDurationMs,
-                     config_.transition);
+                     context.transitionDurationMs);
   } else if (context.pcState == PcState::Running ||
              context.pcState == PcState::Starting) {
     renderAurora(context.hddActivity, context.nowMs);
   } else if (context.pcState == PcState::Sleeping) {
     deactivateAurora();
-    renderSleep(frame_, Aurora::LedCount, config_.sleep, context.nowMs);
+    renderSleep(frame_, Aurora::LedCount, context.nowMs);
   } else {
     deactivateAurora();
     renderBlack(frame_, Aurora::LedCount);
@@ -58,7 +55,7 @@ void AuroraRenderer::renderAurora(uint8_t hddActivity, uint32_t nowMs) {
     elapsedMs = nowMs - lastAuroraUpdateMs_;
   }
   lastAuroraUpdateMs_ = nowMs;
-  aurora_.advance(elapsedMs, hddActivity);
+  aurora_.advance(elapsedMs, hddActivity, nowMs);
 
   for (uint8_t index = 0; index < Aurora::LedCount; ++index) {
     frame_[index] = aurora_.pixel(index);

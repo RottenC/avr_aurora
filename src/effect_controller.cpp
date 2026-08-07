@@ -1,5 +1,7 @@
 #include "effect_controller.h"
 
+#include "config.h"
+
 void EffectController::reset() {
   current_ = TransitionEffect::None;
   finished_ = TransitionEffect::None;
@@ -19,9 +21,9 @@ uint8_t EffectController::priority(TransitionEffect effect) {
 
 uint32_t EffectController::durationFor(TransitionEffect effect) const {
   switch (effect) {
-    case TransitionEffect::Startup: return config_.startupDurationMs;
-    case TransitionEffect::Shutdown: return config_.shutdownDurationMs;
-    case TransitionEffect::Reset: return config_.resetDurationMs;
+    case TransitionEffect::Startup: return Config::StartupDurationMs;
+    case TransitionEffect::Shutdown: return Config::ShutdownDurationMs;
+    case TransitionEffect::Reset: return Config::ResetDurationMs;
     case TransitionEffect::ForcedShutdown:
     case TransitionEffect::None: return 0;
   }

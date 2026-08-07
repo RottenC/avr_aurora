@@ -60,7 +60,7 @@ void releasePowerButton(AuroraRuntime &runtime, uint32_t nowMs) {
 }
 
 void test_runtime_01_cold_start_is_off_with_complete_black_frame() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(123, 10);
   AuroraInputFrame input = inputFrame(false, false);
   runtime.step(input, 10);
@@ -75,7 +75,7 @@ void test_runtime_01_cold_start_is_off_with_complete_black_frame() {
 }
 
 void test_runtime_02_power_button_starts_and_waits_for_strip_power() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(1);
   AuroraInputFrame input = inputFrame(false, false);
   input.powerButton = SignalState::Rising;
@@ -88,7 +88,7 @@ void test_runtime_02_power_button_starts_and_waits_for_strip_power() {
 }
 
 void test_runtime_03_strip_power_loss_cancels_and_restarts_startup() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(1);
   AuroraInputFrame input = inputFrame();
   input.powerButton = SignalState::Rising;
@@ -109,7 +109,7 @@ void test_runtime_03_strip_power_loss_cancels_and_restarts_startup() {
 }
 
 void test_runtime_04_startup_needs_visual_completion_and_power_confirmation() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(5);
   AuroraInputFrame input = inputFrame();
   input.powerButton = SignalState::Rising;
@@ -130,7 +130,7 @@ void test_runtime_04_startup_needs_visual_completion_and_power_confirmation() {
 }
 
 void test_runtime_05_completed_startup_waits_for_late_power_confirmation() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(6);
   AuroraInputFrame input = inputFrame();
   input.powerButton = SignalState::Rising;
@@ -146,7 +146,7 @@ void test_runtime_05_completed_startup_waits_for_late_power_confirmation() {
 }
 
 void test_runtime_06_running_sleeps_and_wakes_from_classified_power_led() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(7);
   AuroraInputFrame input = inputFrame(true);
   runtime.step(input, 0);
@@ -169,7 +169,7 @@ void test_runtime_06_running_sleeps_and_wakes_from_classified_power_led() {
 }
 
 void test_runtime_07_short_power_press_requests_normal_shutdown() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(8);
   reconcileRuntimeToRunning(runtime);
   startPowerHold(runtime, 100);
@@ -189,7 +189,7 @@ void test_runtime_08_forced_shutdown_release_boundaries() {
   const bool expectedForced[] = {false, true, true};
 
   for (uint8_t index = 0; index < 3; ++index) {
-    AuroraRuntime runtime(Config::runtimeConfig());
+    AuroraRuntime runtime;
     runtime.reset(9);
     reconcileRuntimeToRunning(runtime);
     startPowerHold(runtime, 100);
@@ -204,7 +204,7 @@ void test_runtime_08_forced_shutdown_release_boundaries() {
 }
 
 void test_runtime_09_forced_shutdown_latches_before_release() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(10);
   reconcileRuntimeToRunning(runtime);
   startPowerHold(runtime, 100);
@@ -224,7 +224,7 @@ void test_runtime_09_forced_shutdown_latches_before_release() {
 }
 
 void test_runtime_10_reset_transition_keeps_running_persistent_state() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(11);
   reconcileRuntimeToRunning(runtime);
   AuroraInputFrame input = inputFrame(true);
@@ -237,7 +237,7 @@ void test_runtime_10_reset_transition_keeps_running_persistent_state() {
 }
 
 void test_runtime_11_await_shutdown_reaches_off_after_power_filter() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(12);
   reconcileRuntimeToRunning(runtime);
   startPowerHold(runtime, 100);
@@ -252,7 +252,7 @@ void test_runtime_11_await_shutdown_reaches_off_after_power_filter() {
 }
 
 void test_runtime_12_await_shutdown_timeout_reaches_warn() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(13);
   reconcileRuntimeToRunning(runtime);
   startPowerHold(runtime, 100);
@@ -266,8 +266,8 @@ void test_runtime_12_await_shutdown_timeout_reaches_warn() {
 }
 
 void test_runtime_13_same_seed_and_timeline_produce_identical_frames() {
-  AuroraRuntime left(Config::runtimeConfig());
-  AuroraRuntime right(Config::runtimeConfig());
+  AuroraRuntime left;
+  AuroraRuntime right;
   left.reset(0x12345678UL);
   right.reset(0x12345678UL);
   AuroraInputFrame input = inputFrame(true);
@@ -283,9 +283,9 @@ void test_runtime_13_same_seed_and_timeline_produce_identical_frames() {
 }
 
 void test_runtime_14_fixed_step_aurora_matches_different_step_sizes() {
-  AuroraRuntime step5(Config::runtimeConfig());
-  AuroraRuntime step20(Config::runtimeConfig());
-  AuroraRuntime step100(Config::runtimeConfig());
+  AuroraRuntime step5;
+  AuroraRuntime step20;
+  AuroraRuntime step100;
   step5.reset(321);
   step20.reset(321);
   step100.reset(321);
@@ -309,7 +309,7 @@ void test_runtime_14_fixed_step_aurora_matches_different_step_sizes() {
 }
 
 void test_runtime_15_timestamp_wrap_preserves_hold_and_render_timing() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   const uint32_t resetAt = UINT32_MAX - 20;
   runtime.reset(14, resetAt);
   reconcileRuntimeToRunning(runtime, resetAt);
@@ -325,13 +325,16 @@ void test_runtime_15_timestamp_wrap_preserves_hold_and_render_timing() {
 }
 
 void test_runtime_16_strip_loss_blacks_frame_without_erasing_running_state() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(15);
   reconcileRuntimeToRunning(runtime);
+  AuroraInputFrame litInput = inputFrame(true, true);
+  litInput.hddLed = SignalState::High;
+  runtime.step(litInput, Config::FrameIntervalMs);
   const uint32_t litHash = frameHash(runtime);
 
   AuroraInputFrame input = inputFrame(true, false);
-  runtime.step(input, Config::FrameIntervalMs);
+  runtime.step(input, Config::FrameIntervalMs * 2);
   assertState(runtime, PcState::Running);
   TEST_ASSERT_NOT_EQUAL(litHash, frameHash(runtime));
   for (uint8_t index = 0; index < runtime.ledCount(); ++index) {
@@ -339,12 +342,12 @@ void test_runtime_16_strip_loss_blacks_frame_without_erasing_running_state() {
   }
 
   input.stripPowerPresent = true;
-  runtime.step(input, Config::FrameIntervalMs * 2);
+  runtime.step(input, Config::FrameIntervalMs * 3);
   assertState(runtime, PcState::Running);
 }
 
 void test_runtime_17_hdd_smoothing_uses_actual_elapsed_time() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(16);
   AuroraInputFrame input = inputFrame();
   input.hddLed = SignalState::High;
@@ -379,115 +382,8 @@ void test_runtime_18_portable_color_helpers_match_fastled_anchors() {
   TEST_ASSERT_EQUAL_UINT8(64, Aurora::scale8(128, 128));
 }
 
-void assertConfigError(const AuroraRuntimeConfig &config,
-                       AuroraConfigError expected) {
-  TEST_ASSERT_EQUAL_UINT8(
-      static_cast<uint8_t>(expected),
-      static_cast<uint8_t>(validateAuroraRuntimeConfig(config)));
-  AuroraRuntime runtime(config);
-  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(expected),
-                          static_cast<uint8_t>(runtime.configError()));
-  TEST_ASSERT_FALSE(runtime.configValid());
-  runtime.step(inputFrame(true), 100);
-  assertState(runtime, PcState::Off);
-}
-
-void test_runtime_19_default_configuration_is_valid() {
-  const AuroraRuntimeConfig config = Config::runtimeConfig();
-  TEST_ASSERT_EQUAL_UINT8(
-      static_cast<uint8_t>(AuroraConfigError::None),
-      static_cast<uint8_t>(validateAuroraRuntimeConfig(config)));
-  AuroraRuntime runtime(config);
-  TEST_ASSERT_TRUE(runtime.configValid());
-}
-
-void test_runtime_20_invalid_update_intervals_are_rejected() {
-  AuroraRuntimeConfig config = Config::runtimeConfig();
-  config.frameIntervalMs = 0;
-  assertConfigError(config, AuroraConfigError::FrameIntervalZero);
-
-  config = Config::runtimeConfig();
-  config.hdd.updateMs = 0;
-  assertConfigError(config, AuroraConfigError::HddUpdateIntervalZero);
-
-  config = Config::runtimeConfig();
-  config.auroraField.fixedStepMs = 0;
-  assertConfigError(config, AuroraConfigError::AuroraFixedStepZero);
-
-  config = Config::runtimeConfig();
-  config.auroraField.ticksPerFade = 0;
-  assertConfigError(config, AuroraConfigError::AuroraFadePeriodZero);
-
-  config = Config::runtimeConfig();
-  config.auroraField.hddActivityMaximum = 0;
-  assertConfigError(config,
-                    AuroraConfigError::AuroraHddActivityMaximumZero);
-}
-
-void test_runtime_21_invalid_spawn_ranges_are_rejected() {
-  AuroraRuntimeConfig config = Config::runtimeConfig();
-  config.auroraField.spawnMinTicks = 0;
-  assertConfigError(config, AuroraConfigError::AuroraSpawnTickRange);
-
-  config = Config::runtimeConfig();
-  config.auroraField.spawnMinTicks =
-      config.auroraField.spawnMaxTicks + 1;
-  assertConfigError(config, AuroraConfigError::AuroraSpawnTickRange);
-
-  config = Config::runtimeConfig();
-  config.auroraField.spawnMinCount = 0;
-  assertConfigError(config, AuroraConfigError::AuroraSpawnCountRange);
-
-  config = Config::runtimeConfig();
-  config.auroraField.spawnMinCount =
-      config.auroraField.spawnMaxCount + 1;
-  assertConfigError(config, AuroraConfigError::AuroraSpawnCountRange);
-
-  config = Config::runtimeConfig();
-  config.auroraField.spawnMaxCount = Aurora::LedCount + 1;
-  assertConfigError(
-      config, AuroraConfigError::AuroraSpawnCountExceedsLedCount);
-}
-
-void test_runtime_22_invalid_diffusion_is_rejected() {
-  AuroraRuntimeConfig config = Config::runtimeConfig();
-  config.auroraField.diffusionKernelSum = 0;
-  assertConfigError(config,
-                    AuroraConfigError::AuroraDiffusionKernelSumZero);
-
-  config = Config::runtimeConfig();
-  ++config.auroraField.diffusionKernelSum;
-  assertConfigError(config,
-                    AuroraConfigError::AuroraDiffusionKernelSumMismatch);
-}
-
-void test_runtime_23_invalid_renderer_configuration_is_rejected() {
-  AuroraRuntimeConfig config = Config::runtimeConfig();
-  config.renderer.sleep.travelIntervalMs = 0;
-  assertConfigError(config, AuroraConfigError::SleepIntervalZero);
-
-  config = Config::runtimeConfig();
-  config.renderer.sleep.secondaryBrightnessDivisor = 0;
-  assertConfigError(config, AuroraConfigError::SleepBrightnessDivisorZero);
-
-  config = Config::runtimeConfig();
-  config.renderer.transition.shutdownOriginMin =
-      config.renderer.transition.shutdownOriginMax + 1;
-  assertConfigError(config, AuroraConfigError::ShutdownOriginRange);
-
-  config = Config::runtimeConfig();
-  config.renderer.transition.shutdownOriginMax = Aurora::LedCount;
-  assertConfigError(config, AuroraConfigError::ShutdownOriginRange);
-
-  config = Config::runtimeConfig();
-  config.renderer.transition.forcedFlashAtMs =
-      config.pcState.forcedHoldMs + 1;
-  assertConfigError(config,
-                    AuroraConfigError::ForcedFlashAfterForcedHold);
-}
-
 void test_runtime_24_transition_snapshot_start_completion_and_unchanged() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(19);
   AuroraInputFrame input = inputFrame(false, true);
   input.powerButton = SignalState::Rising;
@@ -511,7 +407,7 @@ void test_runtime_24_transition_snapshot_start_completion_and_unchanged() {
 }
 
 void test_runtime_25_transition_snapshot_forced_replaced_by_shutdown() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(20);
   reconcileRuntimeToRunning(runtime);
   startPowerHold(runtime, 100);
@@ -527,7 +423,7 @@ void test_runtime_25_transition_snapshot_forced_replaced_by_shutdown() {
 }
 
 void test_runtime_26_transition_snapshot_reset_completes_to_none() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(21);
   reconcileRuntimeToRunning(runtime);
   AuroraInputFrame input = inputFrame(true);
@@ -546,7 +442,7 @@ void test_runtime_26_transition_snapshot_reset_completes_to_none() {
 }
 
 void test_runtime_27_runtime_prepares_transition_timing() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(22);
   AuroraInputFrame input = inputFrame(false, true);
   input.powerButton = SignalState::Rising;
@@ -571,8 +467,7 @@ uint8_t countLitPixels(const AuroraRenderer &renderer) {
 }
 
 void test_runtime_28_renderer_consumes_prepared_timing_context() {
-  AuroraRenderer renderer(Config::rendererConfig(),
-                          Config::auroraFieldConfig());
+  AuroraRenderer renderer;
   renderer.reset(23);
   AuroraRenderContext context;
   context.pcState = PcState::Starting;
@@ -591,7 +486,7 @@ void test_runtime_28_renderer_consumes_prepared_timing_context() {
 }
 
 void test_runtime_29_signal_transitions_are_one_update_events() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(0x1234ABCDUL, 0);
   reconcileRuntimeToRunning(runtime);
 
@@ -645,11 +540,6 @@ void runRuntimeTests() {
       test_runtime_16_strip_loss_blacks_frame_without_erasing_running_state);
   RUN_TEST(test_runtime_17_hdd_smoothing_uses_actual_elapsed_time);
   RUN_TEST(test_runtime_18_portable_color_helpers_match_fastled_anchors);
-  RUN_TEST(test_runtime_19_default_configuration_is_valid);
-  RUN_TEST(test_runtime_20_invalid_update_intervals_are_rejected);
-  RUN_TEST(test_runtime_21_invalid_spawn_ranges_are_rejected);
-  RUN_TEST(test_runtime_22_invalid_diffusion_is_rejected);
-  RUN_TEST(test_runtime_23_invalid_renderer_configuration_is_rejected);
   RUN_TEST(
       test_runtime_24_transition_snapshot_start_completion_and_unchanged);
   RUN_TEST(

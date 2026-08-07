@@ -15,13 +15,11 @@ void tearDown() {}
 
 namespace {
 PcStateMachine makePcStateMachine() {
-  return PcStateMachine({Config::PowerHoldForcedMs, Config::StartingTimeoutMs, Config::ShutdownWarningTimeoutMs});
+  return PcStateMachine{};
 }
 
 EffectController makeEffectController() {
-  return EffectController({Config::StartupDurationMs,
-                           Config::ShutdownDurationMs,
-                           Config::ResetDurationMs});
+  return EffectController{};
 }
 
 PcStateInputs makeInputs(PowerLedMode mode, bool stripPowerPresent = true) {
@@ -258,7 +256,7 @@ void test_auto_14_effect_cancellation_is_specific_and_state_compatible() {
 }
 
 void test_auto_15_hdd_level_and_contribution_smoothing() {
-  HddActivity hdd(Config::hddActivityConfig());
+  HddActivity hdd;
   hdd.update(SignalState::High, 0, Config::HddUpdateMs);
   TEST_ASSERT_EQUAL_UINT8(Config::HddActiveRise, hdd.value());
 
@@ -280,11 +278,7 @@ void test_auto_15_hdd_level_and_contribution_smoothing() {
 }
 
 void test_auto_16_power_led_tracker_preserves_off_grace_and_blink_timing() {
-  PowerLedTracker tracker({Config::ShortPowerLedOffIgnoreMs,
-                           Config::PowerLedBlinkMinHalfPeriodMs,
-                           Config::PowerLedBlinkMaxHalfPeriodMs,
-                           Config::PowerLedBlinkStaleMs,
-                           Config::PowerLedBlinkEdgesRequired});
+  PowerLedTracker tracker;
   tracker.update(SignalState::Low, 0);
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PowerLedMode::Off),
                           static_cast<uint8_t>(tracker.mode(1)));
@@ -403,7 +397,7 @@ void test_auto_23_strip_power_loss_while_running_preserves_logic() {
 }
 
 void test_auto_24_large_hdd_elapsed_interval_saturates_and_decays() {
-  HddActivity hdd(Config::hddActivityConfig());
+  HddActivity hdd;
   hdd.update(SignalState::Rising, 0, UINT32_MAX);
   TEST_ASSERT_EQUAL_UINT8(Config::HddMax, hdd.value());
   hdd.update(SignalState::Falling, 0, UINT32_MAX);
@@ -416,12 +410,12 @@ void test_auto_24_large_hdd_elapsed_interval_saturates_and_decays() {
 }
 
 void test_auto_25_invalid_power_led_blink_periods_and_stale() {
-  PowerLedTracker tracker({Config::ShortPowerLedOffIgnoreMs, Config::PowerLedBlinkMinHalfPeriodMs, Config::PowerLedBlinkMaxHalfPeriodMs, Config::PowerLedBlinkStaleMs, Config::PowerLedBlinkEdgesRequired});
+  PowerLedTracker tracker;
   tracker.update(SignalState::Low, 0);
   tracker.update(SignalState::Rising,
                  Config::PowerLedBlinkMinHalfPeriodMs - 1);
   TEST_ASSERT_NOT_EQUAL(static_cast<uint8_t>(PowerLedMode::Blinking), static_cast<uint8_t>(tracker.mode(Config::PowerLedBlinkMinHalfPeriodMs)));
-  PowerLedTracker mixed({Config::ShortPowerLedOffIgnoreMs, Config::PowerLedBlinkMinHalfPeriodMs, Config::PowerLedBlinkMaxHalfPeriodMs, Config::PowerLedBlinkStaleMs, Config::PowerLedBlinkEdgesRequired});
+  PowerLedTracker mixed;
   mixed.update(SignalState::Low, 0);
   mixed.update(SignalState::Rising, 200);
   mixed.update(SignalState::Falling, 5000);
@@ -450,14 +444,14 @@ void test_auto_26_startup_animation_finish_waits_for_power_led() {
 }
 
 void test_auto_27_boot_running_and_sleeping_are_separate() {
-  PowerLedTracker running({Config::ShortPowerLedOffIgnoreMs, Config::PowerLedBlinkMinHalfPeriodMs, Config::PowerLedBlinkMaxHalfPeriodMs, Config::PowerLedBlinkStaleMs, Config::PowerLedBlinkEdgesRequired});
+  PowerLedTracker running;
   running.update(SignalState::High, 0);
   PcStateMachine pc = makePcStateMachine();
   pc.update(makeInputs(running.mode(0)), 0);
   pc.update(makeInputs(running.mode(10000)), 10000);
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PcState::Running), static_cast<uint8_t>(pc.state()));
 
-  PowerLedTracker sleep({Config::ShortPowerLedOffIgnoreMs, Config::PowerLedBlinkMinHalfPeriodMs, Config::PowerLedBlinkMaxHalfPeriodMs, Config::PowerLedBlinkStaleMs, Config::PowerLedBlinkEdgesRequired});
+  PowerLedTracker sleep;
   PcStateMachine sleeper = makePcStateMachine();
   sleep.update(SignalState::High, 0);
   sleeper.update(makeInputs(sleep.mode(0)), 0);

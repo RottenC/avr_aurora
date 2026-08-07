@@ -15,7 +15,12 @@ constexpr float PointRadius = 5.0F;
 constexpr float PlotTopMargin = 10.0F;
 constexpr float ValuesHeight = 52.0F;
 constexpr float MinimumPlotHeight = 150.0F;
-constexpr float RightMargin = 12.0F;
+constexpr float RightMargin = 16.0F;
+constexpr float LedHeight = 28.0F;
+constexpr float LedSpacing = 2.0F;
+constexpr float LedSectionSpacing = 8.0F;
+constexpr float LedLabelSpacing = 4.0F;
+constexpr float ContentBottomMargin = 4.0F;
 
 ImU32 rgbColor(const Aurora::Rgb8 &color, uint8_t alpha = UINT8_MAX) {
   return IM_COL32(color.r, color.g, color.b, alpha);
@@ -36,12 +41,9 @@ void drawCenteredText(ImDrawList *drawList, float centerX, float y,
 
 }  // namespace
 
-void drawAuroraFieldView(const AuroraRuntime &runtime) {
-  ImGui::SetNextWindowPos(ImVec2(780.0F, 160.0F),
-                          ImGuiCond_FirstUseEver);
-  ImGui::SetNextWindowSize(ImVec2(410.0F, 550.0F),
-                           ImGuiCond_FirstUseEver);
-  if (!ImGui::Begin("Aurora field")) {
+void drawAuroraFieldView(const AuroraRuntime &runtime,
+                         ImGuiWindowFlags windowFlags) {
+  if (!ImGui::Begin("Aurora field + LED frame", nullptr, windowFlags)) {
     ImGui::End();
     return;
   }
@@ -59,21 +61,31 @@ void drawAuroraFieldView(const AuroraRuntime &runtime) {
   if (childVisible) {
     const float availableHeight =
         std::max(ImGui::GetContentRegionAvail().y, 1.0F);
+    const float ledLabelHeight = ImGui::GetTextLineHeight();
     const float plotHeight =
         std::max(availableHeight - PlotTopMargin - ValuesHeight -
+                     LedSectionSpacing - ledLabelHeight - LedLabelSpacing -
+                     LedHeight - ContentBottomMargin -
                      ImGui::GetStyle().ScrollbarSize,
                  MinimumPlotHeight);
     const float contentWidth = AxisWidth +
                                (Aurora::LedCount - 1) * PointSpacing +
                                RightMargin;
-    const float contentHeight = PlotTopMargin + plotHeight + ValuesHeight;
+    const float ledLabelTop =
+        PlotTopMargin + plotHeight + ValuesHeight + LedSectionSpacing;
+    const float ledTop = ledLabelTop + ledLabelHeight + LedLabelSpacing;
+    const float contentHeight = ledTop + LedHeight + ContentBottomMargin;
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     const float plotLeft = origin.x + AxisWidth;
     const float plotRight =
         plotLeft + (Aurora::LedCount - 1) * PointSpacing;
     const float plotTop = origin.y + PlotTopMargin;
     const float plotBottom = plotTop + plotHeight;
+    const float ledTopScreen = origin.y + ledTop;
     ImDrawList *drawList = ImGui::GetWindowDrawList();
+
+    drawList->AddText(ImVec2(plotLeft, origin.y + ledLabelTop),
+                      IM_COL32(224, 227, 232, 255), "LED frame");
 
     constexpr uint8_t GridValues[] = {0, 64, 128, 192, UINT8_MAX};
     for (uint8_t value : GridValues) {
@@ -132,6 +144,15 @@ void drawAuroraFieldView(const AuroraRuntime &runtime) {
       drawCenteredText(drawList, x, plotBottom + 34.0F,
                        rgbColor(cell.color), cell.colorProgress);
 
+      const Aurora::Rgb8 &pixel = runtime.ledFrame()[index];
+      const float halfLedWidth = (PointSpacing - LedSpacing) * 0.5F;
+      const ImVec2 ledMinimum(x - halfLedWidth, ledTopScreen);
+      const ImVec2 ledMaximum(x + halfLedWidth,
+                              ledTopScreen + LedHeight);
+      drawList->AddRectFilled(ledMinimum, ledMaximum, rgbColor(pixel));
+      drawList->AddRect(ledMinimum, ledMaximum,
+                        IM_COL32(72, 76, 86, 255));
+
       if (ImGui::IsMouseHoveringRect(
               ImVec2(x - PointSpacing * 0.5F, plotTop),
               ImVec2(x + PointSpacing * 0.5F, plotBottom + ValuesHeight))) {
@@ -149,6 +170,16 @@ void drawAuroraFieldView(const AuroraRuntime &runtime) {
                     static_cast<unsigned>(cell.color.r),
                     static_cast<unsigned>(cell.color.g),
                     static_cast<unsigned>(cell.color.b));
+        ImGui::EndTooltip();
+      }
+
+      if (ImGui::IsMouseHoveringRect(ledMinimum, ledMaximum)) {
+        ImGui::BeginTooltip();
+        ImGui::Text("LED %u frame color", static_cast<unsigned>(index));
+        ImGui::Text("RGB: #%02X%02X%02X",
+                    static_cast<unsigned>(pixel.r),
+                    static_cast<unsigned>(pixel.g),
+                    static_cast<unsigned>(pixel.b));
         ImGui::EndTooltip();
       }
     }

@@ -11,7 +11,7 @@ constexpr uint8_t SimulationUnitsPerMs = 20;
 
 }  // namespace
 
-SimulatorSession::SimulatorSession() : runtime_(Config::runtimeConfig()) {
+SimulatorSession::SimulatorSession() {
   reset();
 }
 

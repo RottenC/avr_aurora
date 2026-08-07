@@ -44,40 +44,9 @@ struct AuroraSnapshot {
   uint32_t powerHoldElapsedMs = 0;
 };
 
-struct AuroraRuntimeConfig {
-  uint32_t frameIntervalMs;
-  PowerLedTrackerConfig powerLed;
-  HddActivityConfig hdd;
-  PcStateConfig pcState;
-  EffectControllerConfig effects;
-  Aurora::FieldConfig auroraField;
-  AuroraRendererConfig renderer;
-};
-
-enum class AuroraConfigError : uint8_t {
-  None,
-  FrameIntervalZero,
-  HddUpdateIntervalZero,
-  AuroraFixedStepZero,
-  AuroraSpawnTickRange,
-  AuroraSpawnCountRange,
-  AuroraSpawnCountExceedsLedCount,
-  AuroraFadePeriodZero,
-  AuroraHddActivityMaximumZero,
-  AuroraDiffusionKernelSumZero,
-  AuroraDiffusionKernelSumMismatch,
-  SleepIntervalZero,
-  SleepBrightnessDivisorZero,
-  ShutdownOriginRange,
-  ForcedFlashAfterForcedHold,
-};
-
-AuroraConfigError validateAuroraRuntimeConfig(
-    const AuroraRuntimeConfig &config);
-
 class AuroraRuntime {
  public:
-  explicit AuroraRuntime(const AuroraRuntimeConfig &config);
+  AuroraRuntime();
 
   void reset(uint32_t seed, uint32_t nowMs = 0);
 
@@ -98,11 +67,6 @@ class AuroraRuntime {
   Aurora::FieldCellDiagnostics auroraDiagnostics(uint8_t index) const {
     return renderer_.auroraDiagnostics(index);
   }
-  AuroraConfigError configError() const { return configError_; }
-  bool configValid() const {
-    return configError_ == AuroraConfigError::None;
-  }
-
  private:
   uint32_t transitionDuration(TransitionEffect transition) const;
   void updateSnapshot(PcState stateBeforeStep,
@@ -117,8 +81,6 @@ class AuroraRuntime {
   EffectController effects_;
   AuroraRenderer renderer_;
   AuroraSnapshot snapshot_;
-  AuroraConfigError configError_;
-  uint32_t frameIntervalMs_;
   uint32_t lastHddUpdateMs_;
   uint32_t lastFrameMs_;
   bool renderPending_;

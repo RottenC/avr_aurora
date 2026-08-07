@@ -1,5 +1,8 @@
 #include "aurora_field.h"
 
+#include "../config.h"
+#include "../core/portable_math.h"
+
 namespace {
 
 constexpr uint16_t kQ8_8Max = static_cast<uint16_t>(UINT8_MAX) << 8;
@@ -38,12 +41,13 @@ uint32_t xorshift32(uint32_t value) {
   return value;
 }
 
-Field::Field(const FieldConfig &config)
-    : config_(config),
-      prngState_(1),
+Field::Field()
+    : prngState_(1),
       fixedStepAccumulatorMs_(0),
+      backgroundActivityQ8_8_(0),
+      backgroundReleaseRemainder_(0),
       ticksUntilNextSpawn_(1),
-      ticksUntilFade_(config.ticksPerFade),
+      ticksUntilFade_(Config::AuroraTicksPerFade),
       spawnRateRemainderQ0_8_(0),
       currentBank_(0) {
   reset(1);
@@ -61,17 +65,21 @@ void Field::reset(uint32_t seed) {
   }
 
   currentBank_ = 0;
-  prngState_ = seed == 0 ? config_.zeroSeedFallback : seed;
+  prngState_ = seed == 0 ? Config::AuroraZeroSeedFallback : seed;
   fixedStepAccumulatorMs_ = 0;
-  ticksUntilFade_ = config_.ticksPerFade;
+  backgroundActivityQ8_8_ = 0;
+  backgroundReleaseRemainder_ = 0;
+  ticksUntilFade_ = Config::AuroraTicksPerFade;
   spawnRateRemainderQ0_8_ = 0;
   scheduleNextSpawn();
 }
 
-void Field::advance(uint32_t elapsedMs, uint8_t hddActivity) {
-  updateBackground(hddActivity);
+void Field::advance(uint32_t elapsedMs, uint8_t hddActivity,
+                    uint32_t nowMs) {
+  updateBackground(elapsedMs, hddActivity, nowMs);
 
-  const uint32_t untilNextTick = config_.fixedStepMs - fixedStepAccumulatorMs_;
+  const uint32_t untilNextTick =
+      Config::AuroraFixedStepMs - fixedStepAccumulatorMs_;
   if (elapsedMs < untilNextTick) {
     fixedStepAccumulatorMs_ += elapsedMs;
     return;
@@ -80,19 +88,19 @@ void Field::advance(uint32_t elapsedMs, uint8_t hddActivity) {
   elapsedMs -= untilNextTick;
   fixedStepAccumulatorMs_ = 0;
   fixedTick(hddActivity);
-  while (elapsedMs >= config_.fixedStepMs) {
-    elapsedMs -= config_.fixedStepMs;
+  while (elapsedMs >= Config::AuroraFixedStepMs) {
+    elapsedMs -= Config::AuroraFixedStepMs;
     fixedTick(hddActivity);
   }
   fixedStepAccumulatorMs_ = elapsedMs;
 }
 
 Rgb8 Field::pixel(uint8_t index) const {
-  const Rgb8 background = unpackRgb(config_.backgroundRgb);
+  const Rgb8 background = unpackRgb(Config::AuroraBackgroundRgb);
   if (index >= LedCount) return background;
 
-  const Rgb8 color1 = unpackRgb(config_.color1Rgb);
-  const Rgb8 color2 = unpackRgb(config_.color2Rgb);
+  const Rgb8 color1 = unpackRgb(Config::AuroraColor1Rgb);
+  const Rgb8 color2 = unpackRgb(Config::AuroraColor2Rgb);
   const Rgb8 flare =
       lerpRgb(color1, color2, colorProgress_[currentBank_][index]);
   const uint16_t outputBrightness =
@@ -109,8 +117,8 @@ FieldCellDiagnostics Field::diagnostics(uint8_t index) const {
       brightness_[currentBank_][index],
       backgroundBrightness_[index],
       progress,
-      lerpRgb(unpackRgb(config_.color1Rgb), unpackRgb(config_.color2Rgb),
-              progress),
+      lerpRgb(unpackRgb(Config::AuroraColor1Rgb),
+              unpackRgb(Config::AuroraColor2Rgb), progress),
   };
 }
 
@@ -141,7 +149,7 @@ void Field::fixedTick(uint8_t hddActivity) {
 
   --ticksUntilFade_;
   const bool applyFade = ticksUntilFade_ == 0;
-  if (applyFade) ticksUntilFade_ = config_.ticksPerFade;
+  if (applyFade) ticksUntilFade_ = Config::AuroraTicksPerFade;
   applyFadeAndColorTick(applyFade);
 
   currentBank_ ^= 1;
@@ -154,70 +162,50 @@ void Field::diffuseTick() {
   for (uint8_t destination = 0; destination < LedCount;
        ++destination) {
     uint32_t weightedBrightness = 0;
-    uint32_t weightedProgress = 0;
+    uint16_t weightedProgress = 0;
+    uint8_t progressWeight = 0;
 
     if (destination > 0) {
       const uint8_t source = destination - 1;
       const uint32_t contribution =
           static_cast<uint32_t>(brightness_[currentBank_][source]) *
-          config_.diffusionSideWeight;
+          Config::AuroraDiffusionSideWeight;
       weightedBrightness += contribution;
-      weightedProgress +=
-          contribution * colorProgress_[currentBank_][source];
+      weightedProgress += static_cast<uint16_t>(
+          colorProgress_[currentBank_][source] *
+          Config::AuroraDiffusionSideWeight);
+      progressWeight += Config::AuroraDiffusionSideWeight;
     }
 
     {
       const uint32_t contribution =
           static_cast<uint32_t>(brightness_[currentBank_][destination]) *
-          config_.diffusionCenterWeight;
+          Config::AuroraDiffusionCenterWeight;
       weightedBrightness += contribution;
-      weightedProgress +=
-          contribution * colorProgress_[currentBank_][destination];
+      weightedProgress += static_cast<uint16_t>(
+          colorProgress_[currentBank_][destination] *
+          Config::AuroraDiffusionCenterWeight);
+      progressWeight += Config::AuroraDiffusionCenterWeight;
     }
 
     if (destination + 1 < LedCount) {
       const uint8_t source = destination + 1;
       const uint32_t contribution =
           static_cast<uint32_t>(brightness_[currentBank_][source]) *
-          config_.diffusionSideWeight;
+          Config::AuroraDiffusionSideWeight;
       weightedBrightness += contribution;
-      weightedProgress +=
-          contribution * colorProgress_[currentBank_][source];
+      weightedProgress += static_cast<uint16_t>(
+          colorProgress_[currentBank_][source] *
+          Config::AuroraDiffusionSideWeight);
+      progressWeight += Config::AuroraDiffusionSideWeight;
     }
 
     const uint16_t brightness = static_cast<uint16_t>(
-        weightedBrightness / config_.diffusionKernelSum);
+        weightedBrightness / Config::AuroraDiffusionKernelSum);
     brightness_[nextBank][destination] =
         brightness > kQ8_8Max ? kQ8_8Max : brightness;
     colorProgress_[nextBank][destination] =
-        brightness > 0
-            ? static_cast<uint8_t>(weightedProgress / weightedBrightness)
-            : 0;
-  }
-
-  bool previousIsPeak = false;
-  for (uint8_t destination = 1; destination + 1 < LedCount;
-       ++destination) {
-    const bool currentIsPeak =
-        colorProgress_[nextBank][destination] >
-            colorProgress_[nextBank][destination - 1] &&
-        colorProgress_[nextBank][destination] >
-            colorProgress_[nextBank][destination + 1];
-
-    if (previousIsPeak) {
-      const uint8_t previous = destination - 1;
-      if (colorProgress_[nextBank][previous] < UINT8_MAX) {
-        ++colorProgress_[nextBank][previous];
-      }
-    }
-    previousIsPeak = currentIsPeak;
-  }
-
-  if (previousIsPeak) {
-    const uint8_t previous = LedCount - 2;
-    if (colorProgress_[nextBank][previous] < UINT8_MAX) {
-      ++colorProgress_[nextBank][previous];
-    }
+        static_cast<uint8_t>(weightedProgress / progressWeight);
   }
 }
 
@@ -225,61 +213,111 @@ void Field::applyFadeAndColorTick(bool applyFade) {
   const uint8_t nextBank = currentBank_ ^ 1;
 
   const uint16_t fadeStepQ8_8 =
-      static_cast<uint16_t>(config_.fadeStep) << 8;
+      static_cast<uint16_t>(Config::AuroraFadeStep) << 8;
   for (uint8_t index = 0; index < LedCount; ++index) {
     uint16_t brightness = brightness_[nextBank][index];
-    if (brightness == 0) {
-      colorProgress_[nextBank][index] = 0;
-      continue;
-    }
-
-    if (applyFade) {
+    if (brightness != 0 && applyFade) {
       brightness = brightness > fadeStepQ8_8 ? brightness - fadeStepQ8_8 : 0;
     }
     brightness_[nextBank][index] = brightness;
 
-    if (brightness == 0) {
-      colorProgress_[nextBank][index] = 0;
-      continue;
-    }
+    if (brightness == 0 && backgroundBrightness_[index] == 0) continue;
 
     const uint16_t progress =
         static_cast<uint16_t>(colorProgress_[nextBank][index]) +
-        config_.colorProgressStep;
+        Config::AuroraColorProgressStep;
     colorProgress_[nextBank][index] =
         progress > UINT8_MAX ? UINT8_MAX : static_cast<uint8_t>(progress);
   }
 }
 
-void Field::updateBackground(uint8_t hddActivity) {
-  uint16_t brightnessQ8_8 = 0;
-  if (config_.hddAffectsBackground && config_.hddActivityMaximum != 0) {
-    const uint8_t boundedActivity =
-        hddActivity < config_.hddActivityMaximum
-            ? hddActivity
-            : config_.hddActivityMaximum;
+void Field::updateBackground(uint32_t elapsedMs, uint8_t hddActivity,
+                             uint32_t nowMs) {
+  updateBackgroundActivity(elapsedMs, hddActivity);
+
+  uint32_t baseBrightnessQ8_8 = 0;
+  if (Config::AuroraHddAffectsBackground) {
     const uint32_t maximumBrightnessQ8_8 =
-        static_cast<uint32_t>(config_.hddBackgroundMaxBrightness) << 8;
-    brightnessQ8_8 = static_cast<uint16_t>(
-        (maximumBrightnessQ8_8 * boundedActivity) /
-        config_.hddActivityMaximum);
+        static_cast<uint32_t>(Config::AuroraHddBackgroundMaxBrightness) << 8;
+    const uint32_t maximumActivityQ8_8 =
+        static_cast<uint32_t>(Config::HddMax) << 8;
+    baseBrightnessQ8_8 = static_cast<uint32_t>(
+        (maximumBrightnessQ8_8 * backgroundActivityQ8_8_) /
+        maximumActivityQ8_8);
   }
 
+  const uint16_t time =
+      static_cast<uint16_t>(nowMs / Config::AuroraFixedStepMs);
   for (uint8_t index = 0; index < LedCount; ++index) {
-    backgroundBrightness_[index] = brightnessQ8_8;
+    const uint16_t cell =
+        static_cast<uint16_t>((static_cast<uint16_t>(index) << 8) + time);
+    const uint8_t a = hash8(static_cast<uint8_t>(cell >> 8));
+    const uint8_t b =
+        hash8(static_cast<uint8_t>((cell >> 8) + 1U));
+    const uint8_t c = tri8(static_cast<uint8_t>(
+        index * Config::AuroraHddBackgroundWaveLedScale +
+        (time >> Config::AuroraHddBackgroundWaveTimeShift)));
+    const uint8_t result = static_cast<uint8_t>(
+        (static_cast<uint16_t>(a) + b + c) / 3U);
+    const uint32_t pulsedBrightnessQ8_8 =
+        (baseBrightnessQ8_8 * result) >> 8;
+    backgroundBrightness_[index] = static_cast<uint16_t>(
+        pulsedBrightnessQ8_8 < kQ8_8Max ? pulsedBrightnessQ8_8
+                                        : kQ8_8Max);
+  }
+}
+
+void Field::updateBackgroundActivity(uint32_t elapsedMs,
+                                     uint8_t hddActivity) {
+  if (!Config::AuroraHddAffectsBackground) {
+    backgroundActivityQ8_8_ = 0;
+    backgroundReleaseRemainder_ = 0;
+    return;
+  }
+
+  const uint8_t boundedActivity =
+      hddActivity < Config::HddMax ? hddActivity : Config::HddMax;
+  const uint16_t targetQ8_8 =
+      static_cast<uint16_t>(boundedActivity) << 8;
+  if (targetQ8_8 >= backgroundActivityQ8_8_) {
+    backgroundActivityQ8_8_ = targetQ8_8;
+    backgroundReleaseRemainder_ = 0;
+    return;
+  }
+  if (elapsedMs == 0) return;
+
+  if (elapsedMs >= Config::AuroraHddBackgroundReleaseMs) {
+    backgroundActivityQ8_8_ = targetQ8_8;
+    backgroundReleaseRemainder_ = 0;
+    return;
+  }
+
+  const uint32_t maximumActivityQ8_8 =
+      static_cast<uint32_t>(Config::HddMax) << 8;
+  const uint32_t numerator =
+      elapsedMs * maximumActivityQ8_8 + backgroundReleaseRemainder_;
+  const uint16_t releaseStepQ8_8 = static_cast<uint16_t>(
+      numerator / Config::AuroraHddBackgroundReleaseMs);
+  backgroundReleaseRemainder_ = static_cast<uint16_t>(
+      numerator % Config::AuroraHddBackgroundReleaseMs);
+
+  const uint16_t distanceQ8_8 = backgroundActivityQ8_8_ - targetQ8_8;
+  if (releaseStepQ8_8 >= distanceQ8_8) {
+    backgroundActivityQ8_8_ = targetQ8_8;
+    backgroundReleaseRemainder_ = 0;
+  } else {
+    backgroundActivityQ8_8_ -= releaseStepQ8_8;
   }
 }
 
 void Field::advanceSpawnCountdown(uint8_t hddActivity) {
   uint16_t rateQ8_8 = kOneQ8_8;
-  if (config_.hddAffectsSpawnRate && config_.hddActivityMaximum != 0) {
+  if (Config::AuroraHddAffectsSpawnRate) {
     const uint8_t boundedActivity =
-        hddActivity < config_.hddActivityMaximum
-            ? hddActivity
-            : config_.hddActivityMaximum;
+        hddActivity < Config::HddMax ? hddActivity : Config::HddMax;
     rateQ8_8 += static_cast<uint16_t>(
         (static_cast<uint32_t>(boundedActivity) * kOneQ8_8) /
-        config_.hddActivityMaximum);
+        Config::HddMax);
   }
 
   const uint16_t progressQ8_8 =
@@ -299,7 +337,7 @@ void Field::advanceSpawnCountdown(uint8_t hddActivity) {
 
 void Field::spawnStars() {
   const uint8_t count =
-      rangeInclusive(config_.spawnMinCount, config_.spawnMaxCount);
+      rangeInclusive(Config::AuroraSpawnMinCount, Config::AuroraSpawnMaxCount);
   for (uint8_t spawn = 0; spawn < count; ++spawn) {
     const uint8_t position = rangeInclusive(0, LedCount - 1);
     brightness_[currentBank_][position] = kQ8_8Max;
@@ -309,7 +347,7 @@ void Field::spawnStars() {
 
 void Field::scheduleNextSpawn() {
   ticksUntilNextSpawn_ =
-      rangeInclusive(config_.spawnMinTicks, config_.spawnMaxTicks);
+      rangeInclusive(Config::AuroraSpawnMinTicks, Config::AuroraSpawnMaxTicks);
 }
 
 uint32_t Field::nextU32() {

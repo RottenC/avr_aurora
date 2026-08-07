@@ -13,12 +13,6 @@ struct PcStateInputs {
   bool startupTransitionFinished;
 };
 
-struct PcStateConfig {
-  uint32_t forcedHoldMs;
-  uint32_t startingTimeoutMs;
-  uint32_t shutdownWarningTimeoutMs;
-};
-
 struct PcStateEvents {
   bool requestStartup = false;
   bool requestShutdown = false;
@@ -30,13 +24,11 @@ struct PcStateEvents {
 
 class PcStateMachine {
 public:
-  explicit PcStateMachine(const PcStateConfig &config) : config_(config) {}
   void reset();
   PcStateEvents update(const PcStateInputs &inputs, uint32_t nowMs);
   PcState state() const { return state_; }
   bool forcedLatched() const { return forcedLatched_; }
   uint32_t powerHoldStartMs() const { return powerHoldStartMs_; }
-  uint32_t forcedHoldMs() const { return config_.forcedHoldMs; }
   uint32_t powerHoldElapsed(uint32_t nowMs) const {
     return trackingHold_ ? nowMs - powerHoldStartMs_ : 0;
   }
@@ -47,7 +39,6 @@ private:
   void leaveStarting(PcStateEvents &events, PcState nextState);
   void enterAwaitShutdown(uint32_t nowMs);
 
-  PcStateConfig config_;
   PcState state_ = PcState::Off;
   uint32_t powerHoldStartMs_ = 0;
   uint32_t startingSinceMs_ = 0;

@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-#include "core/aurora_runtime.h"
+#include "core/rgb8.h"
 
 namespace Config {
 constexpr uint8_t LedCount = 56;
@@ -30,20 +30,23 @@ constexpr uint8_t HddMax = 128;
 
 constexpr bool AuroraHddAffectsSpawnRate = true;
 constexpr bool AuroraHddAffectsBackground = true;
-constexpr uint8_t AuroraHddBackgroundMaxBrightness = 128;
+constexpr uint8_t AuroraHddBackgroundMaxBrightness = 240;
+constexpr uint16_t AuroraHddBackgroundReleaseMs = 2000;
 constexpr uint16_t AuroraFixedStepMs = 20;
-constexpr uint8_t AuroraSpawnMinTicks = 20;
-constexpr uint8_t AuroraSpawnMaxTicks = 70;
+constexpr uint8_t AuroraHddBackgroundWaveLedScale = 3;
+constexpr uint8_t AuroraHddBackgroundWaveTimeShift = 1;
+constexpr uint8_t AuroraSpawnMinTicks = 10;
+constexpr uint8_t AuroraSpawnMaxTicks = 25;
 constexpr uint8_t AuroraSpawnMinCount = 1;
 constexpr uint8_t AuroraSpawnMaxCount = 3;
-constexpr uint8_t AuroraTicksPerFade = 10;
-constexpr uint8_t AuroraFadeStep = 1;
-constexpr uint8_t AuroraColorProgressStep = 1;
+constexpr uint8_t AuroraTicksPerFade = 2;
+constexpr uint8_t AuroraFadeStep = 2;
+constexpr uint8_t AuroraColorProgressStep = 2;
 constexpr uint8_t AuroraDiffusionSideWeight = 1;
 constexpr uint8_t AuroraDiffusionCenterWeight = 63;
 constexpr uint8_t AuroraDiffusionKernelSum =
     AuroraDiffusionSideWeight * 2 + AuroraDiffusionCenterWeight;
-constexpr uint32_t AuroraBackgroundRgb = 0x091E37UL;
+constexpr uint32_t AuroraBackgroundRgb = 0x000000UL;
 constexpr uint32_t AuroraColor1Rgb = 0x1ABA94UL;
 constexpr uint32_t AuroraColor2Rgb = 0x6E347CUL;
 constexpr uint32_t AuroraZeroSeedFallback = 0xA341316CUL;
@@ -69,88 +72,13 @@ constexpr uint8_t ForcedSaturation = UINT8_MAX;
 constexpr uint8_t ForcedInitialBrightness = 10;
 constexpr uint8_t ForcedFlashBrightness = 160;
 
-constexpr PowerLedTrackerConfig powerLedTrackerConfig() {
-  return {ShortPowerLedOffIgnoreMs, PowerLedBlinkMinHalfPeriodMs,
-          PowerLedBlinkMaxHalfPeriodMs, PowerLedBlinkStaleMs,
-          PowerLedBlinkEdgesRequired};
-}
-
-constexpr HddActivityConfig hddActivityConfig() {
-  return {HddUpdateMs, HddActiveRise, HddInactiveDecay, HddMax};
-}
-
-constexpr PcStateConfig pcStateConfig() {
-  return {PowerHoldForcedMs, StartingTimeoutMs, ShutdownWarningTimeoutMs};
-}
-
-constexpr EffectControllerConfig effectControllerConfig() {
-  return {StartupDurationMs, ShutdownDurationMs, ResetDurationMs};
-}
-
-constexpr Aurora::FieldConfig auroraFieldConfig() {
-  return {AuroraFixedStepMs,
-          AuroraSpawnMinTicks,
-          AuroraSpawnMaxTicks,
-          AuroraSpawnMinCount,
-          AuroraSpawnMaxCount,
-          AuroraTicksPerFade,
-          AuroraFadeStep,
-          AuroraColorProgressStep,
-          AuroraDiffusionSideWeight,
-          AuroraDiffusionCenterWeight,
-          AuroraDiffusionKernelSum,
-          AuroraBackgroundRgb,
-          AuroraColor1Rgb,
-          AuroraColor2Rgb,
-          AuroraZeroSeedFallback,
-          HddMax,
-          AuroraHddBackgroundMaxBrightness,
-          AuroraHddAffectsSpawnRate,
-          AuroraHddAffectsBackground};
-}
-
-constexpr AuroraRendererConfig rendererConfig() {
-  return {{SleepTravelIntervalMs,
-           SleepSecondaryPointOffset,
-           SleepBeatsPerMinute,
-           SleepMinimumBrightness,
-           SleepPointBrightness,
-           SleepPrimaryHue,
-           SleepPrimarySaturation,
-           SleepSecondaryHue,
-           SleepSecondarySaturation,
-           SleepSecondaryBrightnessDivisor},
-          {ForcedFlashAtMs,
-           StartupHueBase,
-           StartupSaturation,
-           StartupBrightness,
-           ShutdownOriginMin,
-           ShutdownOriginMax,
-           ShutdownColor,
-           ResetColor,
-           ForcedHue,
-           ForcedSaturation,
-           ForcedInitialBrightness,
-           ForcedFlashBrightness}};
-}
-
-constexpr AuroraRuntimeConfig runtimeConfig() {
-  return {FrameIntervalMs,
-          powerLedTrackerConfig(),
-          hddActivityConfig(),
-          pcStateConfig(),
-          effectControllerConfig(),
-          auroraFieldConfig(),
-          rendererConfig()};
-}
-
-static_assert(LedCount == Aurora::LedCount,
-              "Firmware and portable frame sizes must match");
 static_assert(LedCount >= 3, "Aurora requires at least three LEDs");
 static_assert(FrameIntervalMs > 0, "Frame interval must be positive");
 static_assert(HddUpdateMs > 0, "HDD update interval must be positive");
 static_assert(AuroraFixedStepMs > 0, "Aurora fixed step must be positive");
 static_assert(HddMax > 0, "HDD activity maximum must be positive");
+static_assert(AuroraHddBackgroundReleaseMs > 0,
+              "HDD background release must be positive");
 static_assert(AuroraSpawnMinTicks > 0 &&
                   AuroraSpawnMinTicks <= AuroraSpawnMaxTicks,
               "Invalid Aurora spawn tick range");

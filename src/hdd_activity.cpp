@@ -1,5 +1,7 @@
 #include "hdd_activity.h"
 
+#include "config.h"
+
 namespace {
 
 int32_t levelDeltaQ8_8(uint8_t rate, uint16_t updateMs,
@@ -28,17 +30,17 @@ void HddActivity::update(SignalState state, int16_t contribution,
                          uint32_t elapsedMs) {
   int32_t deltaQ8_8 = contribution;
   if (signalIsHigh(state)) {
-    deltaQ8_8 += levelDeltaQ8_8(config_.activeRise, config_.updateMs,
-                                config_.maximum, elapsedMs,
+    deltaQ8_8 += levelDeltaQ8_8(Config::HddActiveRise, Config::HddUpdateMs,
+                                Config::HddMax, elapsedMs,
                                 activeRemainder_);
   } else if (state != SignalState::Blinking) {
-    deltaQ8_8 -= levelDeltaQ8_8(config_.inactiveDecay, config_.updateMs,
-                                config_.maximum, elapsedMs,
+    deltaQ8_8 -= levelDeltaQ8_8(Config::HddInactiveDecay,
+                                Config::HddUpdateMs, Config::HddMax, elapsedMs,
                                 inactiveRemainder_);
   }
 
   int32_t nextQ8_8 = valueQ8_8_ + deltaQ8_8;
-  const int32_t maximumQ8_8 = static_cast<int32_t>(config_.maximum) << 8;
+  const int32_t maximumQ8_8 = static_cast<int32_t>(Config::HddMax) << 8;
   if (nextQ8_8 <= 0) {
     nextQ8_8 = 0;
     inactiveRemainder_ = 0;

@@ -1,5 +1,7 @@
 #include "pc_state.h"
 
+#include "config.h"
+
 void PcStateMachine::reset() {
   state_ = PcState::Off;
   powerHoldStartMs_ = 0;
@@ -66,7 +68,7 @@ PcStateEvents PcStateMachine::update(const PcStateInputs &inputs, uint32_t nowMs
       }
 
       if (inputs.powerMode == PowerLedMode::Off &&
-          nowMs - startingSinceMs_ >= config_.startingTimeoutMs) {
+          nowMs - startingSinceMs_ >= Config::StartingTimeoutMs) {
         leaveStarting(events, PcState::Off);
         break;
       }
@@ -104,13 +106,14 @@ PcStateEvents PcStateMachine::update(const PcStateInputs &inputs, uint32_t nowMs
       }
 
       if (trackingHold_ && inputs.powerButton && !forcedLatched_ &&
-          nowMs - powerHoldStartMs_ >= config_.forcedHoldMs) {
+          nowMs - powerHoldStartMs_ >= Config::PowerHoldForcedMs) {
         forcedLatched_ = true;
       }
 
       if (trackingHold_ && inputs.powerButtonReleased) {
         const bool heldLongEnough =
-            forcedLatched_ || nowMs - powerHoldStartMs_ >= config_.forcedHoldMs;
+            forcedLatched_ ||
+            nowMs - powerHoldStartMs_ >= Config::PowerHoldForcedMs;
         trackingHold_ = false;
         forcedLatched_ = heldLongEnough;
         enterAwaitShutdown(nowMs);
@@ -142,7 +145,8 @@ PcStateEvents PcStateMachine::update(const PcStateInputs &inputs, uint32_t nowMs
       if (inputs.powerMode == PowerLedMode::Off) {
         enterOff();
       } else if (inputs.powerMode == PowerLedMode::On &&
-                 nowMs - awaitingShutdownSinceMs_ >= config_.shutdownWarningTimeoutMs) {
+                 nowMs - awaitingShutdownSinceMs_ >=
+                     Config::ShutdownWarningTimeoutMs) {
         state_ = PcState::Warn;
       }
       break;

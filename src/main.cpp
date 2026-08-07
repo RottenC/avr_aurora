@@ -27,7 +27,7 @@ uint32_t collectAuroraSeed() {
 AvrInputs inputs;
 AvrLedDriver ledDriver;
 AvrSerialDebug debug;
-AuroraRuntime runtime(Config::runtimeConfig());
+AuroraRuntime runtime;
 
 }  // namespace
 

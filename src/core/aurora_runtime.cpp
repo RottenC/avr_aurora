@@ -1,110 +1,13 @@
 #include "aurora_runtime.h"
 
-namespace {
+#include "../config.h"
 
-Aurora::FieldConfig safeFieldConfig(const AuroraRuntimeConfig &runtimeConfig) {
-  Aurora::FieldConfig config = runtimeConfig.auroraField;
-
-  if (config.fixedStepMs == 0) config.fixedStepMs = 1;
-  if (config.spawnMinTicks == 0 ||
-      config.spawnMinTicks > config.spawnMaxTicks) {
-    config.spawnMinTicks = 1;
-    config.spawnMaxTicks = 1;
-  }
-  if (config.spawnMinCount == 0 ||
-      config.spawnMinCount > config.spawnMaxCount ||
-      config.spawnMaxCount > Aurora::LedCount) {
-    config.spawnMinCount = 1;
-    config.spawnMaxCount = 1;
-  }
-  if (config.ticksPerFade == 0) config.ticksPerFade = 1;
-  if (config.hddActivityMaximum == 0) config.hddActivityMaximum = 1;
-
-  const uint16_t calculatedKernelSum =
-      static_cast<uint16_t>(config.diffusionSideWeight) * 2U +
-      config.diffusionCenterWeight;
-  if (config.diffusionKernelSum == 0 ||
-      calculatedKernelSum != config.diffusionKernelSum) {
-    config.diffusionSideWeight = 0;
-    config.diffusionCenterWeight = 1;
-    config.diffusionKernelSum = 1;
-  }
-  return config;
-}
-
-}  // namespace
-
-AuroraConfigError validateAuroraRuntimeConfig(
-    const AuroraRuntimeConfig &config) {
-  if (config.frameIntervalMs == 0) {
-    return AuroraConfigError::FrameIntervalZero;
-  }
-  if (config.hdd.updateMs == 0) {
-    return AuroraConfigError::HddUpdateIntervalZero;
-  }
-  if (config.auroraField.fixedStepMs == 0) {
-    return AuroraConfigError::AuroraFixedStepZero;
-  }
-  if (config.auroraField.spawnMinTicks == 0 ||
-      config.auroraField.spawnMinTicks >
-          config.auroraField.spawnMaxTicks) {
-    return AuroraConfigError::AuroraSpawnTickRange;
-  }
-  if (config.auroraField.spawnMinCount == 0 ||
-      config.auroraField.spawnMinCount >
-          config.auroraField.spawnMaxCount) {
-    return AuroraConfigError::AuroraSpawnCountRange;
-  }
-  if (config.auroraField.spawnMaxCount > Aurora::LedCount) {
-    return AuroraConfigError::AuroraSpawnCountExceedsLedCount;
-  }
-  if (config.auroraField.ticksPerFade == 0) {
-    return AuroraConfigError::AuroraFadePeriodZero;
-  }
-  if (config.auroraField.hddActivityMaximum == 0) {
-    return AuroraConfigError::AuroraHddActivityMaximumZero;
-  }
-  if (config.auroraField.diffusionKernelSum == 0) {
-    return AuroraConfigError::AuroraDiffusionKernelSumZero;
-  }
-  const uint16_t calculatedKernelSum =
-      static_cast<uint16_t>(config.auroraField.diffusionSideWeight) * 2U +
-      config.auroraField.diffusionCenterWeight;
-  if (calculatedKernelSum != config.auroraField.diffusionKernelSum) {
-    return AuroraConfigError::AuroraDiffusionKernelSumMismatch;
-  }
-  if (config.renderer.sleep.travelIntervalMs == 0) {
-    return AuroraConfigError::SleepIntervalZero;
-  }
-  if (config.renderer.sleep.secondaryBrightnessDivisor == 0) {
-    return AuroraConfigError::SleepBrightnessDivisorZero;
-  }
-  if (config.renderer.transition.shutdownOriginMin >
-          config.renderer.transition.shutdownOriginMax ||
-      config.renderer.transition.shutdownOriginMax >= Aurora::LedCount) {
-    return AuroraConfigError::ShutdownOriginRange;
-  }
-  if (config.renderer.transition.forcedFlashAtMs >
-      config.pcState.forcedHoldMs) {
-    return AuroraConfigError::ForcedFlashAfterForcedHold;
-  }
-  return AuroraConfigError::None;
-}
-
-AuroraRuntime::AuroraRuntime(const AuroraRuntimeConfig &config)
-    : powerLed_(config.powerLed),
-      hdd_(config.hdd),
-      pc_(config.pcState),
-      effects_(config.effects),
-      renderer_(config.renderer, safeFieldConfig(config)),
-      configError_(validateAuroraRuntimeConfig(config)),
-      frameIntervalMs_(config.frameIntervalMs == 0 ? 1
-                                                   : config.frameIntervalMs),
-      lastHddUpdateMs_(0),
+AuroraRuntime::AuroraRuntime()
+    : lastHddUpdateMs_(0),
       lastFrameMs_(0),
       renderPending_(true),
       lastLogicalStripPowerPresent_(false) {
-  reset(config.auroraField.zeroSeedFallback, 0);
+  reset(Config::AuroraZeroSeedFallback, 0);
 }
 
 void AuroraRuntime::reset(uint32_t seed, uint32_t nowMs) {
@@ -126,8 +29,6 @@ void AuroraRuntime::step(const AuroraInputFrame &inputs, uint32_t nowMs) {
   snapshot_.stateChanged = false;
   snapshot_.transitionChanged = false;
   snapshot_.frameUpdated = false;
-  if (!configValid()) return;
-
   if (inputs.stripPowerPresent != lastLogicalStripPowerPresent_) {
     lastLogicalStripPowerPresent_ = inputs.stripPowerPresent;
     renderPending_ = true;
@@ -176,7 +77,7 @@ void AuroraRuntime::step(const AuroraInputFrame &inputs, uint32_t nowMs) {
   snapshot_.powerLedMode = powerMode;
   updateSnapshot(stateBeforeStep, transitionBeforeStep, nowMs);
 
-  if (renderPending_ || nowMs - lastFrameMs_ >= frameIntervalMs_) {
+  if (renderPending_ || nowMs - lastFrameMs_ >= Config::FrameIntervalMs) {
     renderPending_ = false;
     lastFrameMs_ = nowMs;
     renderer_.render(renderContext(inputs, nowMs));
@@ -192,7 +93,7 @@ uint32_t AuroraRuntime::transitionDuration(
     case TransitionEffect::Reset:
       return effects_.durationFor(transition);
     case TransitionEffect::ForcedShutdown:
-      return pc_.forcedHoldMs();
+      return Config::PowerHoldForcedMs;
     case TransitionEffect::None:
       return 0;
   }

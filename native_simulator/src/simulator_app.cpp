@@ -1,9 +1,10 @@
 #include "simulator_app.h"
 
+#include <algorithm>
+
 #include <imgui.h>
 
 #include "aurora_field_view.h"
-#include "led_view.h"
 #include "input_panel.h"
 
 namespace {
@@ -12,6 +13,13 @@ constexpr const char *SpeedLabels[] = {
     "0.1x", "0.25x", "0.5x", "1x",
     "2x",   "4x",    "8x",   "16x",
 };
+
+constexpr float AuroraPanelHeightRatio = 0.60F;
+constexpr float SimulationPanelWidthRatio = 1.0F / 3.0F;
+constexpr float MinimumPanelSize = 1.0F;
+constexpr ImGuiWindowFlags DashboardPanelFlags =
+    ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+    ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings;
 
 const char *pcStateName(PcState state) {
   switch (state) {
@@ -55,11 +63,27 @@ void SimulatorApp::update(uint32_t wallDeltaMs) {
 
 void SimulatorApp::draw() {
   const AuroraSnapshot &snapshot = session_.snapshot();
+  const ImGuiViewport *viewport = ImGui::GetMainViewport();
+  const ImVec2 origin = viewport->WorkPos;
+  const ImVec2 availableSize(
+      std::max(viewport->WorkSize.x, MinimumPanelSize),
+      std::max(viewport->WorkSize.y, MinimumPanelSize));
+  const float auroraHeight = availableSize.y * AuroraPanelHeightRatio;
+  const float controlsHeight = availableSize.y - auroraHeight;
+  const float simulationWidth =
+      availableSize.x * SimulationPanelWidthRatio;
+  const float inputsWidth = availableSize.x - simulationWidth;
 
-  ImGui::SetNextWindowPos(ImVec2(10.0F, 10.0F), ImGuiCond_FirstUseEver);
-  ImGui::SetNextWindowSize(ImVec2(360.0F, 250.0F),
-                           ImGuiCond_FirstUseEver);
-  if (ImGui::Begin("Simulation")) {
+  ImGui::SetNextWindowPos(origin, ImGuiCond_Always);
+  ImGui::SetNextWindowSize(ImVec2(availableSize.x, auroraHeight),
+                           ImGuiCond_Always);
+  drawAuroraFieldView(session_.runtime(), DashboardPanelFlags);
+
+  ImGui::SetNextWindowPos(ImVec2(origin.x, origin.y + auroraHeight),
+                          ImGuiCond_Always);
+  ImGui::SetNextWindowSize(ImVec2(simulationWidth, controlsHeight),
+                           ImGuiCond_Always);
+  if (ImGui::Begin("Simulation", nullptr, DashboardPanelFlags)) {
     if (ImGui::Button(session_.paused() ? "Resume" : "Pause")) {
       session_.setPaused(!session_.paused());
     }
@@ -94,7 +118,10 @@ void SimulatorApp::draw() {
   }
   ImGui::End();
 
-  drawLedView(session_.runtime());
-  drawInputPanel(session_);
-  drawAuroraFieldView(session_.runtime());
+  ImGui::SetNextWindowPos(
+      ImVec2(origin.x + simulationWidth, origin.y + auroraHeight),
+      ImGuiCond_Always);
+  ImGui::SetNextWindowSize(ImVec2(inputsWidth, controlsHeight),
+                           ImGuiCond_Always);
+  drawInputPanel(session_, DashboardPanelFlags);
 }
