@@ -7,9 +7,58 @@ namespace {
 
 constexpr uint16_t kQ8_8Max = static_cast<uint16_t>(UINT8_MAX) << 8;
 constexpr uint16_t kOneQ8_8 = 1U << 8;
+constexpr uint32_t kSmoothstepDenominator =
+    static_cast<uint32_t>(UINT8_MAX) * UINT8_MAX;
 
 uint16_t maxQ8_8(uint16_t left, uint16_t right) {
   return left > right ? left : right;
+}
+
+uint8_t calculateIgnitionEase(uint8_t elapsedTicks,
+                              uint8_t durationTicks) {
+  if (durationTicks == 0 || elapsedTicks >= durationTicks) return UINT8_MAX;
+
+  const uint16_t normalized = static_cast<uint16_t>(
+      (static_cast<uint16_t>(elapsedTicks) * UINT8_MAX +
+       durationTicks / 2U) /
+      durationTicks);
+  const uint32_t normalizedSquared =
+      static_cast<uint32_t>(normalized) * normalized;
+  const uint16_t cubicFactor = static_cast<uint16_t>(
+      3U * UINT8_MAX - 2U * normalized);
+  const uint32_t numerator = normalizedSquared * cubicFactor;
+  return static_cast<uint8_t>(
+      (numerator + kSmoothstepDenominator / 2U) /
+      kSmoothstepDenominator);
+}
+
+uint16_t calculateIgnitionTargetBrightness(uint8_t peakBrightness,
+                                     uint8_t easedProgress) {
+  const uint32_t peakQ8_8 =
+      static_cast<uint32_t>(peakBrightness) << 8;
+  return static_cast<uint16_t>(
+      (peakQ8_8 * easedProgress + UINT8_MAX / 2U) / UINT8_MAX);
+}
+
+uint8_t calculateIgnitionSpatialWeight(uint8_t radius, uint8_t distance) {
+  if (distance > radius) return 0;
+
+  const uint16_t scale = static_cast<uint16_t>(radius) + 1U;
+  const uint16_t distanceSquared =
+      static_cast<uint16_t>(distance) * distance;
+  const uint16_t scaleCubed = scale * scale * scale;
+  const uint16_t numerator = static_cast<uint16_t>(
+      scaleCubed + 2U * distanceSquared * distance -
+      3U * distanceSquared * scale);
+  return static_cast<uint8_t>(
+      (static_cast<uint32_t>(numerator) * UINT8_MAX + scaleCubed / 2U) /
+      scaleCubed);
+}
+
+uint8_t scaleU8(uint8_t value, uint8_t scale) {
+  return static_cast<uint8_t>(
+      (static_cast<uint16_t>(value) * scale + UINT8_MAX / 2U) /
+      UINT8_MAX);
 }
 
 Aurora::Rgb8 unpackRgb(uint32_t packed) {
@@ -49,6 +98,7 @@ Field::Field()
       ticksUntilNextSpawn_(1),
       ticksUntilFade_(Config::AuroraTicksPerFade),
       spawnRateRemainderQ0_8_(0),
+      nextIgnitionSlot_(0),
       currentBank_(0) {
   reset(1);
 }
@@ -63,8 +113,12 @@ void Field::reset(uint32_t seed) {
   for (uint8_t index = 0; index < LedCount; ++index) {
     backgroundBrightness_[index] = 0;
   }
+  for (uint8_t slot = 0; slot < Config::AuroraIgnitionCapacity; ++slot) {
+    ignitions_[slot] = {0, 0, 0, 0, 0};
+  }
 
   currentBank_ = 0;
+  nextIgnitionSlot_ = 0;
   prngState_ = seed == 0 ? Config::AuroraZeroSeedFallback : seed;
   fixedStepAccumulatorMs_ = 0;
   backgroundActivityQ8_8_ = 0;
@@ -142,6 +196,53 @@ void Field::setCellForTest(uint8_t index, uint16_t brightnessQ8_8,
       brightnessQ8_8 > kQ8_8Max ? kQ8_8Max : brightnessQ8_8;
   colorProgress_[currentBank_][index] = colorProgress;
 }
+
+void Field::spawnIgnitionForTest(uint8_t position, uint8_t peakBrightness,
+                                 uint8_t durationTicks, uint8_t radius) {
+  spawnIgnition(position, peakBrightness, durationTicks, radius);
+}
+
+void Field::advanceIgnitionsForTest() { advanceIgnitions(); }
+
+void Field::setSpawnCountdownForTest(uint8_t ticksUntilNextSpawn) {
+  ticksUntilNextSpawn_ = ticksUntilNextSpawn;
+}
+
+uint8_t Field::activeIgnitionCountForTest() const {
+  uint8_t count = 0;
+  for (uint8_t slot = 0; slot < Config::AuroraIgnitionCapacity; ++slot) {
+    if (ignitions_[slot].durationTicks != 0) ++count;
+  }
+  return count;
+}
+
+Field::IgnitionTestState Field::ignitionForTest(uint8_t slot) const {
+  if (slot >= Config::AuroraIgnitionCapacity) return {};
+  const Ignition &ignition = ignitions_[slot];
+  return {
+      ignition.durationTicks != 0,
+      ignition.position,
+      ignition.peakBrightness,
+      ignition.durationTicks,
+      ignition.elapsedTicks,
+      ignition.radius,
+  };
+}
+
+uint8_t Field::ignitionEaseForTest(uint8_t elapsedTicks,
+                                   uint8_t durationTicks) {
+  return calculateIgnitionEase(elapsedTicks, durationTicks);
+}
+
+uint8_t Field::ignitionSpatialWeightForTest(uint8_t radius,
+                                            uint8_t distance) {
+  return calculateIgnitionSpatialWeight(radius, distance);
+}
+
+uint16_t Field::ignitionTargetBrightnessForTest(
+    uint8_t peakBrightness, uint8_t easedProgress) {
+  return calculateIgnitionTargetBrightness(peakBrightness, easedProgress);
+}
 #endif
 
 void Field::fixedTick(uint8_t hddActivity) {
@@ -153,6 +254,7 @@ void Field::fixedTick(uint8_t hddActivity) {
   applyFadeAndColorTick(applyFade);
 
   currentBank_ ^= 1;
+  advanceIgnitions();
   advanceSpawnCountdown(hddActivity);
 }
 
@@ -228,6 +330,94 @@ void Field::applyFadeAndColorTick(bool applyFade) {
         Config::AuroraColorProgressStep;
     colorProgress_[nextBank][index] =
         progress > UINT8_MAX ? UINT8_MAX : static_cast<uint8_t>(progress);
+  }
+}
+
+void Field::advanceIgnitions() {
+  uint8_t easedProgress[Config::AuroraIgnitionCapacity];
+
+  for (uint8_t slot = 0; slot < Config::AuroraIgnitionCapacity; ++slot) {
+    Ignition &ignition = ignitions_[slot];
+    if (ignition.durationTicks == 0) continue;
+
+    if (ignition.elapsedTicks < ignition.durationTicks) {
+      ++ignition.elapsedTicks;
+    }
+    easedProgress[slot] =
+        calculateIgnitionEase(ignition.elapsedTicks, ignition.durationTicks);
+    applyIgnitionColorCap(ignition, easedProgress[slot]);
+  }
+
+  for (uint8_t slot = 0; slot < Config::AuroraIgnitionCapacity; ++slot) {
+    const Ignition &ignition = ignitions_[slot];
+    if (ignition.durationTicks == 0) continue;
+
+    bool positionHandled = false;
+    for (uint8_t previous = 0; previous < slot; ++previous) {
+      if (ignitions_[previous].durationTicks != 0 &&
+          ignitions_[previous].position == ignition.position) {
+        positionHandled = true;
+        break;
+      }
+    }
+    if (positionHandled) continue;
+
+    uint32_t combinedTarget = 0;
+    for (uint8_t source = slot; source < Config::AuroraIgnitionCapacity;
+         ++source) {
+      const Ignition &candidate = ignitions_[source];
+      if (candidate.durationTicks == 0 ||
+          candidate.position != ignition.position) {
+        continue;
+      }
+      combinedTarget += calculateIgnitionTargetBrightness(
+          candidate.peakBrightness, easedProgress[source]);
+      if (combinedTarget >= kQ8_8Max) {
+        combinedTarget = kQ8_8Max;
+        break;
+      }
+    }
+
+    uint16_t &cellBrightness =
+        brightness_[currentBank_][ignition.position];
+    if (cellBrightness < combinedTarget) {
+      cellBrightness = static_cast<uint16_t>(combinedTarget);
+    }
+  }
+
+  for (uint8_t slot = 0; slot < Config::AuroraIgnitionCapacity; ++slot) {
+    Ignition &ignition = ignitions_[slot];
+    if (ignition.durationTicks != 0 &&
+        ignition.elapsedTicks >= ignition.durationTicks) {
+      ignition.durationTicks = 0;
+    }
+  }
+}
+
+void Field::applyIgnitionColorCap(const Ignition &ignition,
+                                  uint8_t easedProgress) {
+  for (uint8_t distance = 0; distance <= ignition.radius; ++distance) {
+    const uint8_t spatialWeight =
+        calculateIgnitionSpatialWeight(ignition.radius, distance);
+    const uint8_t suppression = scaleU8(spatialWeight, easedProgress);
+    const uint8_t maximumProgress =
+        static_cast<uint8_t>(UINT8_MAX - suppression);
+
+    if (ignition.position >= distance) {
+      const uint8_t left =
+          static_cast<uint8_t>(ignition.position - distance);
+      if (colorProgress_[currentBank_][left] > maximumProgress) {
+        colorProgress_[currentBank_][left] = maximumProgress;
+      }
+    }
+
+    if (distance == 0) continue;
+    const uint16_t right =
+        static_cast<uint16_t>(ignition.position) + distance;
+    if (right < LedCount &&
+        colorProgress_[currentBank_][right] > maximumProgress) {
+      colorProgress_[currentBank_][right] = maximumProgress;
+    }
   }
 }
 
@@ -340,9 +530,60 @@ void Field::spawnStars() {
       rangeInclusive(Config::AuroraSpawnMinCount, Config::AuroraSpawnMaxCount);
   for (uint8_t spawn = 0; spawn < count; ++spawn) {
     const uint8_t position = rangeInclusive(0, LedCount - 1);
-    brightness_[currentBank_][position] = kQ8_8Max;
-    colorProgress_[currentBank_][position] = 0;
+    const uint8_t peakBrightness = rangeInclusive(
+        Config::AuroraIgnitionMinPeakBrightness,
+        Config::AuroraIgnitionMaxPeakBrightness);
+    constexpr uint8_t minimumDurationTicks = static_cast<uint8_t>(
+        Config::AuroraIgnitionMinDurationMs / Config::AuroraFixedStepMs);
+    constexpr uint8_t maximumDurationTicks = static_cast<uint8_t>(
+        Config::AuroraIgnitionMaxDurationMs / Config::AuroraFixedStepMs);
+    const uint8_t durationTicks =
+        rangeInclusive(minimumDurationTicks, maximumDurationTicks);
+    const uint8_t radius = rangeInclusive(Config::AuroraIgnitionMinRadius,
+                                          Config::AuroraIgnitionMaxRadius);
+    spawnIgnition(position, peakBrightness, durationTicks, radius);
   }
+}
+
+void Field::spawnIgnition(uint8_t position, uint8_t peakBrightness,
+                          uint8_t durationTicks, uint8_t radius) {
+  if (position >= LedCount) return;
+  if (durationTicks == 0) durationTicks = 1;
+  if (radius > Config::AuroraIgnitionMaxRadius) {
+    radius = Config::AuroraIgnitionMaxRadius;
+  }
+
+  const uint8_t slot = selectIgnitionSlot();
+  ignitions_[slot] = {
+      position,
+      peakBrightness,
+      durationTicks,
+      0,
+      radius,
+  };
+  nextIgnitionSlot_ = static_cast<uint8_t>(
+      (slot + 1U) % Config::AuroraIgnitionCapacity);
+}
+
+uint8_t Field::selectIgnitionSlot() const {
+  for (uint8_t offset = 0; offset < Config::AuroraIgnitionCapacity;
+       ++offset) {
+    const uint8_t slot = static_cast<uint8_t>(
+        (nextIgnitionSlot_ + offset) % Config::AuroraIgnitionCapacity);
+    if (ignitions_[slot].durationTicks == 0) return slot;
+  }
+
+  uint8_t oldestSlot = nextIgnitionSlot_;
+  for (uint8_t offset = 1; offset < Config::AuroraIgnitionCapacity;
+       ++offset) {
+    const uint8_t slot = static_cast<uint8_t>(
+        (nextIgnitionSlot_ + offset) % Config::AuroraIgnitionCapacity);
+    if (ignitions_[slot].elapsedTicks >
+        ignitions_[oldestSlot].elapsedTicks) {
+      oldestSlot = slot;
+    }
+  }
+  return oldestSlot;
 }
 
 void Field::scheduleNextSpawn() {

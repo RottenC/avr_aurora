@@ -188,13 +188,33 @@ three steps per LED. HDD activity scales that texture up to the configured
 background maximum. At maximum HDD activity the point-spawn rate doubles;
 diffusion and fade timing do not speed up. A nonzero HDD background advances
 the affected cell's color progress even when its flare brightness is zero. A
-cell retains its color progress after both sources reach zero; progress resets
-only when a new flare is spawned in that cell. The background has an
+cell retains its color progress after both sources reach zero; only a growing
+flare ignition may lower it again. The background has an
 independent two-second full-scale release, so it fades more slowly without
 extending the HDD-driven point-spawn rate. Color progress is diffused as an
 independent field with the same center/side kernel as flare brightness. It is
 normalized at the physical strip ends so uniform color remains uniform, and
 transitions between neighboring flare peaks stay smooth.
+
+New flare points do not appear at full brightness immediately. Up to ten
+ignitions are active at once. Each ignition has a random central LED, a target
+peak brightness of 168..220, a 600..1400 ms duration aligned to the
+20 ms Aurora fixed step, and a radius of 1..3 LEDs. An integer cubic smoothstep
+defines the central brightness target over time. After normal diffusion and
+fade, the ignition raises its central Q8.8 flare cell to that target when
+needed, compensating the losses without lowering an already brighter cell.
+Targets of overlapping ignitions at the same position add with saturation at
+255. When all slots are occupied, a new ignition replaces the oldest active
+one. Existing point-spawn timing, batch size, and HDD rate scaling remain
+unchanged.
+
+While an ignition grows, it lowers the shared color-progress ceiling around
+its center. Temporal suppression uses the same cubic smoothstep. Spatial
+suppression uses the integer complement of smoothstep at `distance/(radius+1)`;
+the center reaches color progress zero, while the effect decreases toward the
+edge of the radius. Contributions are clipped at the physical strip ends and
+never wrap. Overlapping ignitions add their brightness targets with saturation
+and apply the lowest color-progress ceiling.
 
 ### Startup
 

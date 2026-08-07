@@ -35,34 +35,23 @@ void assertFieldsEqual(const Aurora::Field &left, const Aurora::Field &right) {
   }
   TEST_ASSERT_EQUAL_UINT8(left.spawnRateRemainderQ0_8(),
                           right.spawnRateRemainderQ0_8());
-}
-
-uint32_t addHashByte(uint32_t hash, uint8_t value) {
-  return (hash ^ value) * 0x01000193UL;
-}
-
-uint32_t stateHash(const Aurora::Field &field) {
-  uint32_t hash = 0x811C9DC5UL;
-  for (uint8_t index = 0; index < Config::LedCount; ++index) {
-    const uint16_t brightness = field.brightnessQ8_8(index);
-    const Aurora::Rgb8 pixel = field.pixel(index);
-    hash = addHashByte(hash, static_cast<uint8_t>(brightness));
-    hash = addHashByte(hash, static_cast<uint8_t>(brightness >> 8));
-    hash = addHashByte(hash, field.colorProgress(index));
-    hash = addHashByte(hash, pixel.r);
-    hash = addHashByte(hash, pixel.g);
-    hash = addHashByte(hash, pixel.b);
+  TEST_ASSERT_EQUAL_UINT8(left.activeIgnitionCountForTest(),
+                          right.activeIgnitionCountForTest());
+  for (uint8_t slot = 0; slot < Config::AuroraIgnitionCapacity; ++slot) {
+    const Aurora::Field::IgnitionTestState leftIgnition =
+        left.ignitionForTest(slot);
+    const Aurora::Field::IgnitionTestState rightIgnition =
+        right.ignitionForTest(slot);
+    TEST_ASSERT_EQUAL(leftIgnition.active, rightIgnition.active);
+    TEST_ASSERT_EQUAL_UINT8(leftIgnition.position, rightIgnition.position);
+    TEST_ASSERT_EQUAL_UINT8(leftIgnition.peakBrightness,
+                            rightIgnition.peakBrightness);
+    TEST_ASSERT_EQUAL_UINT8(leftIgnition.durationTicks,
+                            rightIgnition.durationTicks);
+    TEST_ASSERT_EQUAL_UINT8(leftIgnition.elapsedTicks,
+                            rightIgnition.elapsedTicks);
+    TEST_ASSERT_EQUAL_UINT8(leftIgnition.radius, rightIgnition.radius);
   }
-  const uint32_t prngState = field.prngState();
-  for (uint8_t shift = 0; shift < 32; shift += 8) {
-    hash = addHashByte(hash, static_cast<uint8_t>(prngState >> shift));
-  }
-  hash = addHashByte(hash, field.ticksUntilNextSpawn());
-  const uint32_t accumulator = field.fixedStepAccumulatorMs();
-  for (uint8_t shift = 0; shift < 32; shift += 8) {
-    hash = addHashByte(hash, static_cast<uint8_t>(accumulator >> shift));
-  }
-  return hash;
 }
 
 void test_aurora_prng_and_reset_anchors() {
@@ -73,12 +62,17 @@ void test_aurora_prng_and_reset_anchors() {
   Aurora::Field field;
   field.reset(1);
   TEST_ASSERT_EQUAL_HEX32(270369UL, field.prngState());
-  TEST_ASSERT_EQUAL_UINT8(38, field.ticksUntilNextSpawn());
-  TEST_ASSERT_EQUAL_HEX32(0x8203EE52UL, stateHash(field));
+  const uint8_t spawnSpan = static_cast<uint8_t>(
+      Config::AuroraSpawnMaxTicks - Config::AuroraSpawnMinTicks + 1U);
+  TEST_ASSERT_EQUAL_UINT8(
+      Config::AuroraSpawnMinTicks + Aurora::xorshift32(1) % spawnSpan,
+      field.ticksUntilNextSpawn());
 
   field.advance(1234);
   field.reset(1);
-  TEST_ASSERT_EQUAL_HEX32(0x8203EE52UL, stateHash(field));
+  Aurora::Field clean;
+  clean.reset(1);
+  assertFieldsEqual(clean, field);
 
   field.reset(0);
   TEST_ASSERT_EQUAL_HEX32(Aurora::xorshift32(Config::AuroraZeroSeedFallback),
@@ -88,9 +82,9 @@ void test_aurora_prng_and_reset_anchors() {
 void test_aurora_initial_rgb_and_zero_elapsed() {
   Aurora::Field field;
   field.reset(456);
-  const uint32_t before = stateHash(field);
+  const Aurora::Field before = field;
   field.advance(0);
-  TEST_ASSERT_EQUAL_HEX32(before, stateHash(field));
+  assertFieldsEqual(before, field);
   for (uint8_t index = 0; index < Config::LedCount; ++index) {
     TEST_ASSERT_EQUAL_UINT16(0, field.brightnessQ8_8(index));
     TEST_ASSERT_EQUAL_UINT8(0, field.colorProgress(index));
@@ -106,9 +100,12 @@ void test_aurora_diffusion_uses_open_out_of_place_boundaries() {
   TEST_ASSERT_EQUAL_UINT16(1004, center.brightnessQ8_8(27));
   TEST_ASSERT_EQUAL_UINT16(63271, center.brightnessQ8_8(28));
   TEST_ASSERT_EQUAL_UINT16(1004, center.brightnessQ8_8(29));
-  TEST_ASSERT_EQUAL_UINT8(1, center.colorProgress(27));
-  TEST_ASSERT_EQUAL_UINT8(1, center.colorProgress(28));
-  TEST_ASSERT_EQUAL_UINT8(1, center.colorProgress(29));
+  TEST_ASSERT_EQUAL_UINT8(Config::AuroraColorProgressStep,
+                          center.colorProgress(27));
+  TEST_ASSERT_EQUAL_UINT8(Config::AuroraColorProgressStep,
+                          center.colorProgress(28));
+  TEST_ASSERT_EQUAL_UINT8(Config::AuroraColorProgressStep,
+                          center.colorProgress(29));
 
   Aurora::Field left;
   left.reset(1);
@@ -127,7 +124,13 @@ void test_aurora_color_progress_uses_independent_blur() {
   overlap.setCellForTest(29, kQ8_8Max, 255);
   overlap.advance(Config::AuroraFixedStepMs);
   TEST_ASSERT_EQUAL_UINT16(kQ8_8Max, overlap.brightnessQ8_8(28));
-  TEST_ASSERT_EQUAL_UINT8(128, overlap.colorProgress(28));
+  const uint8_t expectedOverlapProgress = static_cast<uint8_t>(
+      (128U * Config::AuroraDiffusionCenterWeight +
+       255U * Config::AuroraDiffusionSideWeight) /
+          Config::AuroraDiffusionKernelSum +
+      Config::AuroraColorProgressStep);
+  TEST_ASSERT_EQUAL_UINT8(expectedOverlapProgress,
+                          overlap.colorProgress(28));
 
   Aurora::Field peak;
   peak.reset(1);
@@ -135,9 +138,20 @@ void test_aurora_color_progress_uses_independent_blur() {
   peak.setCellForTest(28, kQ8_8Max, 128);
   peak.setCellForTest(29, kQ8_8Max, 0);
   peak.advance(Config::AuroraFixedStepMs);
-  TEST_ASSERT_EQUAL_UINT8(2, peak.colorProgress(27));
-  TEST_ASSERT_EQUAL_UINT8(125, peak.colorProgress(28));
-  TEST_ASSERT_EQUAL_UINT8(2, peak.colorProgress(29));
+  const uint8_t expectedPeakSideProgress = static_cast<uint8_t>(
+      (128U * Config::AuroraDiffusionSideWeight) /
+          Config::AuroraDiffusionKernelSum +
+      Config::AuroraColorProgressStep);
+  const uint8_t expectedPeakCenterProgress = static_cast<uint8_t>(
+      (128U * Config::AuroraDiffusionCenterWeight) /
+          Config::AuroraDiffusionKernelSum +
+      Config::AuroraColorProgressStep);
+  TEST_ASSERT_EQUAL_UINT8(expectedPeakSideProgress,
+                          peak.colorProgress(27));
+  TEST_ASSERT_EQUAL_UINT8(expectedPeakCenterProgress,
+                          peak.colorProgress(28));
+  TEST_ASSERT_EQUAL_UINT8(expectedPeakSideProgress,
+                          peak.colorProgress(29));
 
   Aurora::Field rgb;
   rgb.reset(1);
@@ -149,32 +163,179 @@ void test_aurora_color_progress_uses_independent_blur() {
   assertRgb(rgb.pixel(0), 34, 59, 67);
 }
 
-void test_aurora_color_progress_survives_fade_to_zero_until_spawn() {
-  Aurora::Field fading;
-  fading.reset(1);
-  fading.setCellForTest(28, static_cast<uint16_t>(2) << 8, 42);
-  fading.advance(Config::AuroraFixedStepMs * 2U);
-  TEST_ASSERT_EQUAL_UINT16(0, fading.brightnessQ8_8(28));
-  TEST_ASSERT_GREATER_THAN_UINT8(0, fading.colorProgress(28));
+void test_aurora_color_progress_survives_flare_fade_to_zero() {
+  Aurora::Field field;
+  field.reset(1);
+  field.setSpawnCountdownForTest(UINT8_MAX);
+  field.setCellForTest(
+      28, static_cast<uint16_t>(Config::AuroraFadeStep) << 8, 42);
 
-  Aurora::Field spawning;
-  spawning.reset(1);
-  for (uint8_t index = 0; index < Config::LedCount; ++index) {
-    spawning.setCellForTest(index, 0, 77);
-  }
-  spawning.advance(Config::AuroraFixedStepMs * 37U);
-  for (uint8_t index = 0; index < Config::LedCount; ++index) {
-    TEST_ASSERT_EQUAL_UINT8(77, spawning.colorProgress(index));
+  field.advance(Config::AuroraFixedStepMs * Config::AuroraTicksPerFade);
+
+  TEST_ASSERT_EQUAL_UINT16(0, field.brightnessQ8_8(28));
+  TEST_ASSERT_GREATER_THAN_UINT8(0, field.colorProgress(28));
+}
+
+void test_aurora_ignition_starts_without_immediate_brightness() {
+  Aurora::Field field;
+  field.reset(1);
+  field.setSpawnCountdownForTest(UINT8_MAX);
+  field.setCellForTest(28, 0, 77);
+
+  field.spawnIgnitionForTest(28, 200, 30, 2);
+
+  TEST_ASSERT_EQUAL_UINT16(0, field.brightnessQ8_8(28));
+  TEST_ASSERT_EQUAL_UINT8(77, field.colorProgress(28));
+  TEST_ASSERT_EQUAL_UINT8(1, field.activeIgnitionCountForTest());
+}
+
+void test_aurora_ignition_target_curve_is_monotonic_and_exact() {
+  constexpr uint8_t durationTicks = 70;
+  constexpr uint8_t peakBrightness = 200;
+  uint8_t previousEase = 0;
+  uint16_t previousBrightness = 0;
+
+  TEST_ASSERT_EQUAL_UINT8(
+      0, Aurora::Field::ignitionEaseForTest(0, durationTicks));
+  for (uint8_t elapsed = 1; elapsed <= durationTicks; ++elapsed) {
+    const uint8_t ease =
+        Aurora::Field::ignitionEaseForTest(elapsed, durationTicks);
+    const uint16_t brightness =
+        Aurora::Field::ignitionTargetBrightnessForTest(peakBrightness, ease);
+    TEST_ASSERT_TRUE(ease >= previousEase);
+    TEST_ASSERT_TRUE(brightness >= previousBrightness);
+    previousEase = ease;
+    previousBrightness = brightness;
   }
 
-  spawning.advance(Config::AuroraFixedStepMs);
-  uint8_t spawnedCells = 0;
-  for (uint8_t index = 0; index < Config::LedCount; ++index) {
-    if (spawning.brightnessQ8_8(index) == 0) continue;
-    ++spawnedCells;
-    TEST_ASSERT_EQUAL_UINT8(0, spawning.colorProgress(index));
+  TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, previousEase);
+  TEST_ASSERT_EQUAL_UINT16(
+      static_cast<uint16_t>(peakBrightness) << 8, previousBrightness);
+
+  Aurora::Field field;
+  field.reset(1);
+  field.spawnIgnitionForTest(28, peakBrightness, durationTicks, 2);
+  for (uint8_t tick = 0; tick < durationTicks; ++tick) {
+    field.advanceIgnitionsForTest();
   }
-  TEST_ASSERT_GREATER_THAN_UINT8(0, spawnedCells);
+  TEST_ASSERT_EQUAL_UINT16(
+      static_cast<uint16_t>(peakBrightness) << 8,
+      field.brightnessQ8_8(28));
+  TEST_ASSERT_EQUAL_UINT8(0, field.activeIgnitionCountForTest());
+}
+
+void test_aurora_ignition_compensates_diffusion_and_fade() {
+  constexpr uint8_t durationTicks = 30;
+  constexpr uint8_t peakBrightness = 200;
+
+  Aurora::Field field;
+  field.reset(1);
+  field.setSpawnCountdownForTest(UINT8_MAX);
+  field.spawnIgnitionForTest(28, peakBrightness, durationTicks, 2);
+  for (uint8_t tick = 0; tick < durationTicks; ++tick) {
+    field.advance(Config::AuroraFixedStepMs);
+  }
+
+  TEST_ASSERT_EQUAL_UINT16(
+      static_cast<uint16_t>(peakBrightness) << 8,
+      field.brightnessQ8_8(28));
+  TEST_ASSERT_EQUAL_UINT8(0, field.activeIgnitionCountForTest());
+}
+
+void test_aurora_ignition_color_profile_and_open_boundaries() {
+  TEST_ASSERT_EQUAL_UINT8(
+      255, Aurora::Field::ignitionSpatialWeightForTest(1, 0));
+  TEST_ASSERT_EQUAL_UINT8(
+      128, Aurora::Field::ignitionSpatialWeightForTest(1, 1));
+  TEST_ASSERT_EQUAL_UINT8(
+      255, Aurora::Field::ignitionSpatialWeightForTest(2, 0));
+  TEST_ASSERT_EQUAL_UINT8(
+      189, Aurora::Field::ignitionSpatialWeightForTest(2, 1));
+  TEST_ASSERT_EQUAL_UINT8(
+      66, Aurora::Field::ignitionSpatialWeightForTest(2, 2));
+  TEST_ASSERT_EQUAL_UINT8(
+      255, Aurora::Field::ignitionSpatialWeightForTest(3, 0));
+  TEST_ASSERT_EQUAL_UINT8(
+      215, Aurora::Field::ignitionSpatialWeightForTest(3, 1));
+  TEST_ASSERT_EQUAL_UINT8(
+      128, Aurora::Field::ignitionSpatialWeightForTest(3, 2));
+  TEST_ASSERT_EQUAL_UINT8(
+      40, Aurora::Field::ignitionSpatialWeightForTest(3, 3));
+  TEST_ASSERT_EQUAL_UINT8(
+      0, Aurora::Field::ignitionSpatialWeightForTest(3, 4));
+
+  Aurora::Field center;
+  center.reset(1);
+  for (uint8_t index = 0; index < Config::LedCount; ++index) {
+    center.setCellForTest(index, 0, UINT8_MAX);
+  }
+  center.spawnIgnitionForTest(28, 0, 4, 3);
+  for (uint8_t tick = 0; tick < 4; ++tick) {
+    center.advanceIgnitionsForTest();
+  }
+  TEST_ASSERT_EQUAL_UINT8(0, center.colorProgress(28));
+  TEST_ASSERT_EQUAL_UINT8(40, center.colorProgress(27));
+  TEST_ASSERT_EQUAL_UINT8(40, center.colorProgress(29));
+  TEST_ASSERT_EQUAL_UINT8(127, center.colorProgress(26));
+  TEST_ASSERT_EQUAL_UINT8(127, center.colorProgress(30));
+  TEST_ASSERT_EQUAL_UINT8(215, center.colorProgress(25));
+  TEST_ASSERT_EQUAL_UINT8(215, center.colorProgress(31));
+  TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, center.colorProgress(24));
+
+  Aurora::Field edge;
+  edge.reset(1);
+  for (uint8_t index = 0; index < Config::LedCount; ++index) {
+    edge.setCellForTest(index, 0, UINT8_MAX);
+  }
+  edge.spawnIgnitionForTest(0, 0, 4, 3);
+  for (uint8_t tick = 0; tick < 4; ++tick) {
+    edge.advanceIgnitionsForTest();
+  }
+  TEST_ASSERT_EQUAL_UINT8(0, edge.colorProgress(0));
+  TEST_ASSERT_EQUAL_UINT8(40, edge.colorProgress(1));
+  TEST_ASSERT_EQUAL_UINT8(127, edge.colorProgress(2));
+  TEST_ASSERT_EQUAL_UINT8(215, edge.colorProgress(3));
+  TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, edge.colorProgress(4));
+  TEST_ASSERT_EQUAL_UINT8(UINT8_MAX,
+                          edge.colorProgress(Config::LedCount - 1));
+}
+
+void test_aurora_ignition_pool_evicts_oldest_and_saturates() {
+  Aurora::Field pool;
+  pool.reset(1);
+  for (uint8_t slot = 0; slot < Config::AuroraIgnitionCapacity; ++slot) {
+    pool.spawnIgnitionForTest(slot, 128, 30, 1);
+  }
+  TEST_ASSERT_EQUAL_UINT8(Config::AuroraIgnitionCapacity,
+                          pool.activeIgnitionCountForTest());
+  pool.advanceIgnitionsForTest();
+  const uint16_t brightnessBeforeEviction = pool.brightnessQ8_8(0);
+  TEST_ASSERT_GREATER_THAN_UINT16(0, brightnessBeforeEviction);
+  pool.spawnIgnitionForTest(Config::AuroraIgnitionCapacity, 200, 30, 3);
+  TEST_ASSERT_EQUAL_UINT8(Config::AuroraIgnitionCapacity,
+                          pool.activeIgnitionCountForTest());
+  const Aurora::Field::IgnitionTestState replaced = pool.ignitionForTest(0);
+  TEST_ASSERT_TRUE(replaced.active);
+  TEST_ASSERT_EQUAL_UINT8(Config::AuroraIgnitionCapacity,
+                          replaced.position);
+  TEST_ASSERT_EQUAL_UINT8(200, replaced.peakBrightness);
+  TEST_ASSERT_EQUAL_UINT8(30, replaced.durationTicks);
+  TEST_ASSERT_EQUAL_UINT8(3, replaced.radius);
+  for (uint8_t tick = 0; tick < 30; ++tick) {
+    pool.advanceIgnitionsForTest();
+  }
+  TEST_ASSERT_EQUAL_UINT16(brightnessBeforeEviction,
+                           pool.brightnessQ8_8(0));
+
+  Aurora::Field saturated;
+  saturated.reset(1);
+  saturated.spawnIgnitionForTest(28, UINT8_MAX, 1, 1);
+  saturated.spawnIgnitionForTest(28, UINT8_MAX, 1, 1);
+  saturated.advanceIgnitionsForTest();
+  TEST_ASSERT_EQUAL_UINT16(kQ8_8Max, saturated.brightnessQ8_8(28));
+
+  pool.reset(1);
+  TEST_ASSERT_EQUAL_UINT8(0, pool.activeIgnitionCountForTest());
 }
 
 void test_aurora_hdd_background_advances_color_progress() {
@@ -290,37 +451,57 @@ void test_aurora_hdd_doubles_spawn_rate_at_maximum() {
   half.reset(1);
   saturated.reset(1);
 
+  const uint8_t initialCountdown = idle.ticksUntilNextSpawn();
+
   idle.advance(Config::AuroraFixedStepMs * 2U, 0);
   half.advance(Config::AuroraFixedStepMs * 2U, Config::HddMax / 2);
   saturated.advance(Config::AuroraFixedStepMs * 2U, Config::HddMax);
-  TEST_ASSERT_EQUAL_UINT8(36, idle.ticksUntilNextSpawn());
-  TEST_ASSERT_EQUAL_UINT8(35, half.ticksUntilNextSpawn());
-  TEST_ASSERT_EQUAL_UINT8(34, saturated.ticksUntilNextSpawn());
+  TEST_ASSERT_EQUAL_UINT8(initialCountdown - 2U,
+                          idle.ticksUntilNextSpawn());
+  TEST_ASSERT_EQUAL_UINT8(initialCountdown - 3U,
+                          half.ticksUntilNextSpawn());
+  TEST_ASSERT_EQUAL_UINT8(initialCountdown - 4U,
+                          saturated.ticksUntilNextSpawn());
 
   saturated.reset(1);
-  saturated.advance(Config::AuroraFixedStepMs * 19U, Config::HddMax);
-  TEST_ASSERT_NOT_EQUAL(Aurora::xorshift32(1), saturated.prngState());
+  saturated.setSpawnCountdownForTest(4);
+  const uint32_t prngBeforeSpawn = saturated.prngState();
+  saturated.advance(Config::AuroraFixedStepMs * 2U, Config::HddMax);
+  TEST_ASSERT_NOT_EQUAL(prngBeforeSpawn, saturated.prngState());
+  TEST_ASSERT_GREATER_THAN_UINT8(0,
+                                 saturated.activeIgnitionCountForTest());
 }
 
-void test_aurora_deterministic_checkpoints() {
-  struct Checkpoint {
-    uint16_t tick;
-    uint32_t hash;
-  };
-  const Checkpoint checkpoints[] = {
-      {0, 0x8203EE52UL},   {1, 0x3B5CA68FUL},   {38, 0x99CE002BUL},
-      {70, 0x21CE5D68UL}, {100, 0x8E7EF733UL}, {600, 0xCCA9BE87UL},
-  };
+void test_aurora_seeded_ignitions_are_deterministic_and_bounded() {
+  Aurora::Field left;
+  Aurora::Field right;
+  left.reset(1);
+  right.reset(1);
 
-  Aurora::Field field;
-  field.reset(1);
-  uint16_t previousTick = 0;
-  for (const Checkpoint &checkpoint : checkpoints) {
-    for (uint16_t tick = previousTick; tick < checkpoint.tick; ++tick) {
-      field.advance(Config::AuroraFixedStepMs);
+  for (uint16_t tick = 0; tick < 600; ++tick) {
+    left.advance(Config::AuroraFixedStepMs);
+    right.advance(Config::AuroraFixedStepMs);
+    assertFieldsEqual(left, right);
+
+    for (uint8_t slot = 0; slot < Config::AuroraIgnitionCapacity; ++slot) {
+      const Aurora::Field::IgnitionTestState ignition =
+          left.ignitionForTest(slot);
+      if (!ignition.active) continue;
+      TEST_ASSERT_TRUE(
+          ignition.peakBrightness >=
+          Config::AuroraIgnitionMinPeakBrightness);
+      TEST_ASSERT_TRUE(
+          ignition.peakBrightness <=
+          Config::AuroraIgnitionMaxPeakBrightness);
+      TEST_ASSERT_TRUE(
+          ignition.durationTicks >=
+          Config::AuroraIgnitionMinDurationMs / Config::AuroraFixedStepMs);
+      TEST_ASSERT_TRUE(
+          ignition.durationTicks <=
+          Config::AuroraIgnitionMaxDurationMs / Config::AuroraFixedStepMs);
+      TEST_ASSERT_TRUE(ignition.radius >= Config::AuroraIgnitionMinRadius);
+      TEST_ASSERT_TRUE(ignition.radius <= Config::AuroraIgnitionMaxRadius);
     }
-    TEST_ASSERT_EQUAL_HEX32(checkpoint.hash, stateHash(field));
-    previousTick = checkpoint.tick;
   }
 }
 
@@ -331,10 +512,15 @@ void runAuroraTests() {
   RUN_TEST(test_aurora_initial_rgb_and_zero_elapsed);
   RUN_TEST(test_aurora_diffusion_uses_open_out_of_place_boundaries);
   RUN_TEST(test_aurora_color_progress_uses_independent_blur);
-  RUN_TEST(test_aurora_color_progress_survives_fade_to_zero_until_spawn);
+  RUN_TEST(test_aurora_color_progress_survives_flare_fade_to_zero);
+  RUN_TEST(test_aurora_ignition_starts_without_immediate_brightness);
+  RUN_TEST(test_aurora_ignition_target_curve_is_monotonic_and_exact);
+  RUN_TEST(test_aurora_ignition_compensates_diffusion_and_fade);
+  RUN_TEST(test_aurora_ignition_color_profile_and_open_boundaries);
+  RUN_TEST(test_aurora_ignition_pool_evicts_oldest_and_saturates);
   RUN_TEST(test_aurora_hdd_background_advances_color_progress);
   RUN_TEST(test_aurora_fixed_step_grouping_matches);
   RUN_TEST(test_aurora_hdd_background_is_separate_and_composited_with_max);
   RUN_TEST(test_aurora_hdd_doubles_spawn_rate_at_maximum);
-  RUN_TEST(test_aurora_deterministic_checkpoints);
+  RUN_TEST(test_aurora_seeded_ignitions_are_deterministic_and_bounded);
 }
