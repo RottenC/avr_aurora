@@ -301,9 +301,6 @@ transitions remain inside the core.
 internal `AnimationMode` switch. Mode entry initializes only mode-local timing,
 phase, and origin data; it never resets the shared Aurora field.
 
-The Python/PySide workbench is not a behavioral reference and is not used for
-FSM, HDD, Power LED, effect, or parity validation.
-
 ## Future extension
 
 Reserve a clean way to inject system alerts, especially an over-temperature indication, without rewriting the state machine or base effects.

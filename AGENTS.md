@@ -29,8 +29,8 @@ state snapshot + portable RGB frame
 ```
 
 The core must not depend on Arduino, AVR registers, GPIO, interrupts, UART,
-FastLED, SDL2, Dear ImGui, Qt/PySide, or operating-system wall-clock APIs. It
-must never include files from `src/avr`.
+FastLED, SDL2, Dear ImGui, desktop UI toolkits, or operating-system wall-clock
+APIs. It must never include files from `src/avr`.
 
 ### AVR platform layer
 
@@ -71,14 +71,6 @@ SDL2 + Dear ImGui simulator frontend
 The simulator controls normalized virtual inputs and explicit simulation time,
 then reads `AuroraSnapshot`, transition/state diagnostics, and the portable RGB
 frame. SDL2 and Dear ImGui remain outside the core include and link interfaces.
-
-### Existing Python simulator
-
-The current Python/PySide simulator is a temporary workbench. It may remain
-available during migration and may provide limited visual UI inspiration, but
-it is not a reference implementation and must not be used for behavioral
-parity, FSM, Power LED, HDD, or effects validation. It must not receive new
-canonical firmware logic. Qt/PySide is not the native simulator frontend.
 
 ### Intended project layout
 
