@@ -9,37 +9,25 @@ void PcStateMachine::reset() {
   awaitingShutdownSinceMs_ = 0;
   trackingHold_ = false;
   forcedLatched_ = false;
-  startupTransitionRequested_ = false;
-  startupTransitionFinished_ = false;
-  waitingForStripPower_ = false;
 }
 
 void PcStateMachine::enterOff() {
   state_ = PcState::Off;
   trackingHold_ = false;
   forcedLatched_ = false;
-  startupTransitionRequested_ = false;
-  startupTransitionFinished_ = false;
-  waitingForStripPower_ = false;
 }
 
-void PcStateMachine::enterStarting(PcStateEvents &events, bool stripPowerPresent, uint32_t nowMs) {
+void PcStateMachine::enterRunning() {
+  state_ = PcState::Running;
+  trackingHold_ = false;
+  forcedLatched_ = false;
+}
+
+void PcStateMachine::enterStarting(uint32_t nowMs) {
   state_ = PcState::Starting;
   startingSinceMs_ = nowMs;
   trackingHold_ = false;
   forcedLatched_ = false;
-  startupTransitionFinished_ = false;
-  waitingForStripPower_ = !stripPowerPresent;
-  startupTransitionRequested_ = stripPowerPresent;
-  events.requestStartup = stripPowerPresent;
-}
-
-void PcStateMachine::leaveStarting(PcStateEvents &events, PcState nextState) {
-  if (startupTransitionRequested_) events.cancelStartup = true;
-  state_ = nextState;
-  startupTransitionRequested_ = false;
-  startupTransitionFinished_ = false;
-  waitingForStripPower_ = false;
 }
 
 void PcStateMachine::enterAwaitShutdown(uint32_t nowMs) {
@@ -47,13 +35,14 @@ void PcStateMachine::enterAwaitShutdown(uint32_t nowMs) {
   awaitingShutdownSinceMs_ = nowMs;
 }
 
-PcStateEvents PcStateMachine::update(const PcStateInputs &inputs, uint32_t nowMs) {
-  PcStateEvents events;
+PcStateEvents PcStateMachine::update(const PcStateInputs &inputs,
+                                     uint32_t nowMs) {
+  PcStateEvents events{};
 
   switch (state_) {
     case PcState::Off:
       if (inputs.powerButtonPressed) {
-        enterStarting(events, inputs.stripPowerPresent, nowMs);
+        enterStarting(nowMs);
       } else if (inputs.powerMode == PowerLedMode::Blinking) {
         state_ = PcState::Sleeping;
       } else if (inputs.powerMode == PowerLedMode::On) {
@@ -63,35 +52,19 @@ PcStateEvents PcStateMachine::update(const PcStateInputs &inputs, uint32_t nowMs
 
     case PcState::Starting:
       if (inputs.powerMode == PowerLedMode::Blinking) {
-        leaveStarting(events, PcState::Sleeping);
+        state_ = PcState::Sleeping;
         break;
       }
 
       if (inputs.powerMode == PowerLedMode::Off &&
           nowMs - startingSinceMs_ >= Config::StartingTimeoutMs) {
-        leaveStarting(events, PcState::Off);
+        enterOff();
         break;
       }
 
-      if (!inputs.stripPowerPresent) {
-        if (startupTransitionRequested_) events.cancelStartup = true;
-        startupTransitionRequested_ = false;
-        startupTransitionFinished_ = false;
-        waitingForStripPower_ = true;
-        break;
-      }
-
-      if (waitingForStripPower_ || !startupTransitionRequested_) {
-        waitingForStripPower_ = false;
-        startupTransitionRequested_ = true;
-        startupTransitionFinished_ = false;
-        events.requestStartup = true;
-      } else if (inputs.startupTransitionFinished) {
-        startupTransitionFinished_ = true;
-      }
-
-      if (startupTransitionFinished_ && inputs.powerMode == PowerLedMode::On) {
-        leaveStarting(events, PcState::Running);
+      if (inputs.startupAnimationFinished &&
+          inputs.powerMode == PowerLedMode::On) {
+        state_ = PcState::Running;
       }
       break;
 
@@ -102,7 +75,6 @@ PcStateEvents PcStateMachine::update(const PcStateInputs &inputs, uint32_t nowMs
         trackingHold_ = true;
         forcedLatched_ = false;
         powerHoldStartMs_ = nowMs;
-        events.requestForcedShutdown = true;
       }
 
       if (trackingHold_ && inputs.powerButton && !forcedLatched_ &&
@@ -117,10 +89,6 @@ PcStateEvents PcStateMachine::update(const PcStateInputs &inputs, uint32_t nowMs
         trackingHold_ = false;
         forcedLatched_ = heldLongEnough;
         enterAwaitShutdown(nowMs);
-        if (!heldLongEnough) {
-          events.cancelForcedShutdown = true;
-          events.requestShutdown = true;
-        }
         break;
       }
 
@@ -144,15 +112,10 @@ PcStateEvents PcStateMachine::update(const PcStateInputs &inputs, uint32_t nowMs
     case PcState::AwaitShutdown:
       if (inputs.powerMode == PowerLedMode::Off) {
         enterOff();
-      } else if (inputs.powerMode == PowerLedMode::On &&
-                 nowMs - awaitingShutdownSinceMs_ >=
-                     Config::ShutdownWarningTimeoutMs) {
-        state_ = PcState::Warn;
+      } else if (nowMs - awaitingShutdownSinceMs_ >=
+                 Config::AwaitShutdownTimeoutMs) {
+        enterRunning();
       }
-      break;
-
-    case PcState::Warn:
-      if (inputs.powerMode == PowerLedMode::Off) enterOff();
       break;
   }
 

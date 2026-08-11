@@ -21,8 +21,7 @@ enum class PcState : uint8_t {
   Starting,
   Running,
   Sleeping,
-  AwaitShutdown,
-  Warn
+  AwaitShutdown
 };
 enum class TransitionEffect : uint8_t {
   None,
@@ -31,4 +30,15 @@ enum class TransitionEffect : uint8_t {
   ForcedShutdown,
   Reset
 };
+
+enum class AnimationMode : uint8_t {
+  Off,
+  Startup,
+  Ambient,
+  Reset,
+  Shutdown,
+  ForcedShutdown,
+  Sleep,
+};
+
 enum class PowerLedMode : uint8_t { Off, On, Blinking };

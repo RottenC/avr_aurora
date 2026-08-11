@@ -35,9 +35,17 @@ constexpr uint8_t SleepPrimarySaturation = 180;
 constexpr uint8_t SleepSecondaryHue = 176;
 constexpr uint8_t SleepSecondarySaturation = 160;
 constexpr uint8_t SleepSecondaryBrightnessDivisor = 2;
-constexpr uint8_t StartupHueBase = 120;
-constexpr uint8_t StartupSaturation = 220;
-constexpr uint8_t StartupBrightness = 96;
+constexpr uint8_t StartupSpreadEndProgress = 176;
+constexpr uint8_t StartupFlashEndProgress = 216;
+constexpr uint8_t StartupInitialBrightness = 48;
+constexpr uint8_t StartupSpreadBrightness = 176;
+constexpr uint8_t StartupFlashBrightness = 255;
+constexpr uint8_t StartupSettleBrightness = 168;
+constexpr uint8_t StartupInitialColorProgressCeiling = 64;
+constexpr uint8_t ShutdownWaveTravelEndProgress = StartupSpreadEndProgress;
+constexpr uint8_t ResetTintFadeStartProgress = 192;
+constexpr uint8_t ResetWaveBrightness = 255;
+constexpr uint8_t ResetWaveColorProgressCeiling = 0;
 }  // namespace VisualTuning
 
 constexpr uint8_t LedCount = 56;
@@ -51,12 +59,13 @@ constexpr uint32_t PowerLedBlinkStaleMs = 3500;
 constexpr uint8_t PowerLedBlinkEdgesRequired = 4;
 constexpr uint32_t InitialStateObserveMs = 1500;
 constexpr uint32_t PowerHoldForcedMs = 4000;
+constexpr uint32_t ForcedShutdownDelayMs = 500;
 constexpr uint32_t ForcedFlashAtMs = 2000;
 constexpr uint32_t StartupDurationMs = 2200;
 constexpr uint32_t ShutdownDurationMs = 1800;
 constexpr uint32_t ResetDurationMs = 900;
 constexpr uint32_t StartingTimeoutMs = 30000;
-constexpr uint32_t ShutdownWarningTimeoutMs = 120000;
+constexpr uint32_t AwaitShutdownTimeoutMs = 10000;
 constexpr uint8_t HddActiveRise = 3;
 constexpr uint8_t HddInactiveDecay = 2;
 constexpr uint8_t HddMax = 128;
@@ -74,8 +83,6 @@ constexpr uint8_t ShutdownOriginMin = 23;
 constexpr uint8_t ShutdownOriginMax = 32;
 constexpr Aurora::Rgb8 ShutdownColor = {255, 255, 255};
 constexpr Aurora::Rgb8 ResetColor = {255, 0, 0};
-constexpr uint8_t ForcedHue = 0;
-constexpr uint8_t ForcedSaturation = UINT8_MAX;
 constexpr uint8_t ForcedInitialBrightness = 10;
 constexpr uint8_t ForcedFlashBrightness = 160;
 
@@ -107,9 +114,21 @@ constexpr uint8_t SleepPrimarySaturation = VisualTuning::SleepPrimarySaturation;
 constexpr uint8_t SleepSecondaryHue = VisualTuning::SleepSecondaryHue;
 constexpr uint8_t SleepSecondarySaturation = VisualTuning::SleepSecondarySaturation;
 constexpr uint8_t SleepSecondaryBrightnessDivisor = VisualTuning::SleepSecondaryBrightnessDivisor;
-constexpr uint8_t StartupHueBase = VisualTuning::StartupHueBase;
-constexpr uint8_t StartupSaturation = VisualTuning::StartupSaturation;
-constexpr uint8_t StartupBrightness = VisualTuning::StartupBrightness;
+constexpr uint8_t StartupSpreadEndProgress = VisualTuning::StartupSpreadEndProgress;
+constexpr uint8_t StartupFlashEndProgress = VisualTuning::StartupFlashEndProgress;
+constexpr uint8_t StartupInitialBrightness = VisualTuning::StartupInitialBrightness;
+constexpr uint8_t StartupSpreadBrightness = VisualTuning::StartupSpreadBrightness;
+constexpr uint8_t StartupFlashBrightness = VisualTuning::StartupFlashBrightness;
+constexpr uint8_t StartupSettleBrightness = VisualTuning::StartupSettleBrightness;
+constexpr uint8_t StartupInitialColorProgressCeiling =
+    VisualTuning::StartupInitialColorProgressCeiling;
+constexpr uint8_t ShutdownWaveTravelEndProgress =
+    VisualTuning::ShutdownWaveTravelEndProgress;
+constexpr uint8_t ResetTintFadeStartProgress =
+    VisualTuning::ResetTintFadeStartProgress;
+constexpr uint8_t ResetWaveBrightness = VisualTuning::ResetWaveBrightness;
+constexpr uint8_t ResetWaveColorProgressCeiling =
+    VisualTuning::ResetWaveColorProgressCeiling;
 
 static_assert(LedCount >= 3, "Aurora requires at least three LEDs");
 static_assert(FrameIntervalMs > 0, "Frame interval must be positive");
@@ -153,8 +172,17 @@ static_assert(SleepSecondaryBrightnessDivisor > 0,
 static_assert(ShutdownOriginMin <= ShutdownOriginMax &&
                   ShutdownOriginMax < LedCount,
               "Shutdown origin must be inside the LED frame");
-static_assert(ForcedFlashAtMs <= PowerHoldForcedMs,
-              "Forced flash must occur during the hold interval");
+static_assert(ForcedShutdownDelayMs < ForcedFlashAtMs &&
+                  ForcedFlashAtMs < PowerHoldForcedMs,
+              "Forced shutdown phases must be ordered");
+static_assert(StartupSpreadEndProgress > 0 &&
+                  StartupSpreadEndProgress < StartupFlashEndProgress,
+              "Startup animation phases must be ordered");
+static_assert(ShutdownWaveTravelEndProgress > 0 &&
+                  ShutdownWaveTravelEndProgress < UINT8_MAX,
+              "Shutdown wave needs time to travel and fade");
+static_assert(ResetTintFadeStartProgress < UINT8_MAX,
+              "Reset tint needs a non-empty settle phase");
 static_assert(AuroraDiffusionKernelSum > 0,
               "Aurora diffusion kernel sum must be positive");
 static_assert(AuroraDiffusionKernelSum ==

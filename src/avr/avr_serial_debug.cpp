@@ -16,8 +16,6 @@ const __FlashStringHelper *pcStateName(PcState state) {
       return F("Sleeping");
     case PcState::AwaitShutdown:
       return F("AwaitShutdown");
-    case PcState::Warn:
-      return F("Warn");
   }
   return F("?");
 }

@@ -2,11 +2,11 @@
 
 #include <stdint.h>
 
-#include "../effect_controller.h"
+#include "../effects/aurora_field.h"
 #include "../hdd_activity.h"
 #include "../pc_state.h"
 #include "../power_led_tracker.h"
-#include "renderer.h"
+#include "geometry.h"
 #include "rgb8.h"
 
 struct AuroraInputFrame {
@@ -25,6 +25,7 @@ struct AuroraInputFrame {
 struct AuroraSnapshot {
   PcState pcState = PcState::Off;
   PcState previousPcState = PcState::Off;
+  AnimationMode animation = AnimationMode::Off;
   TransitionEffect transition = TransitionEffect::None;
   TransitionEffect previousTransition = TransitionEffect::None;
   PowerLedMode powerLedMode = PowerLedMode::Off;
@@ -62,27 +63,55 @@ class AuroraRuntime {
   void requestFrameUpdate() { renderPending_ = true; }
 
   const AuroraSnapshot &snapshot() const { return snapshot_; }
-  const Aurora::Rgb8 *ledFrame() const { return renderer_.frame(); }
-  uint8_t ledCount() const { return renderer_.ledCount(); }
+  const Aurora::Rgb8 *ledFrame() const { return frame_; }
+  uint8_t ledCount() const { return Aurora::LedCount; }
   Aurora::FieldCellDiagnostics auroraDiagnostics(uint8_t index) const {
-    return renderer_.auroraDiagnostics(index);
+    return field_.diagnostics(index);
   }
+
+#ifdef PIO_UNIT_TESTING
+  uint32_t auroraPrngStateForTest() const { return field_.prngState(); }
+#endif
+
  private:
-  uint32_t transitionDuration(TransitionEffect transition) const;
+  static bool animationAdvancesField(AnimationMode mode);
+  static TransitionEffect transitionFor(AnimationMode mode);
+  static uint32_t transitionDuration(TransitionEffect transition);
+
+  bool currentAnimationFinished(uint32_t nowMs) const;
+  AnimationMode selectAnimation(const AuroraInputFrame &inputs,
+                                bool currentAnimationFinished,
+                                bool resetRequested, uint32_t nowMs) const;
+  void enterAnimation(AnimationMode mode, uint32_t startedAtMs,
+                      uint32_t nowMs, bool restart = false);
+  void updateAnimation(const AuroraInputFrame &inputs, uint32_t nowMs);
+  void updateStartupField(uint32_t elapsedMs, uint32_t nowMs);
+  void updateResetField(uint32_t elapsedMs, uint32_t nowMs);
+  void renderAnimation(uint32_t nowMs);
+  void renderField();
+  void renderStartup(uint32_t nowMs);
+  void renderReset(uint32_t nowMs);
+  void renderShutdown(uint32_t nowMs);
+  void renderForcedShutdown(uint32_t nowMs);
   void updateSnapshot(PcState stateBeforeStep,
                       TransitionEffect transitionBeforeStep,
                       uint32_t nowMs);
-  AuroraRenderContext renderContext(const AuroraInputFrame &inputs,
-                                    uint32_t nowMs) const;
+  uint8_t animationProgress(uint32_t nowMs) const;
 
   PowerLedTracker powerLed_;
   HddActivity hdd_;
   PcStateMachine pc_;
-  EffectController effects_;
-  AuroraRenderer renderer_;
+  Aurora::Field field_;
+  Aurora::Rgb8 frame_[Aurora::LedCount];
   AuroraSnapshot snapshot_;
+  AnimationMode animationMode_;
+  uint32_t animationStartedAtMs_;
   uint32_t lastHddUpdateMs_;
   uint32_t lastFrameMs_;
+  uint32_t lastFieldUpdateMs_;
+  uint8_t animationOrigin_;
+  bool startupAnimationFinished_;
+  bool shutdownAnimationFinished_;
   bool renderPending_;
   bool lastLogicalStripPowerPresent_;
 };

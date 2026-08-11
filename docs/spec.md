@@ -69,7 +69,6 @@ enum class PcState : uint8_t {
     Running,
     Sleeping,
     AwaitShutdown,
-    Warn,
 };
 ```
 
@@ -86,6 +85,24 @@ enum class TransitionEffect : uint8_t {
 ```
 
 Keeping these separate allows, for example, `PcState::Running` plus `TransitionEffect::Reset`.
+
+The runtime also owns an internal animation mode:
+
+```cpp
+enum class AnimationMode : uint8_t {
+    Off,
+    Startup,
+    Ambient,
+    Reset,
+    Shutdown,
+    ForcedShutdown,
+    Sleep,
+};
+```
+
+`AnimationMode` selects the field-update loop and frame interpretation. It is
+not another representation of persistent PC state. `TransitionEffect` remains
+the public transition diagnostic derived from the active animation mode.
 
 ## State transitions
 
@@ -113,17 +130,15 @@ Keeping these separate allows, for example, `PcState::Running` plus `TransitionE
 
 ### AwaitShutdown
 
-- Run the white shutdown wave once for a normal shutdown request, then hold every LED at black even while the OS continues shutting down.
+- Run the outward shutdown wave once for a normal shutdown request, fading
+  every LED behind its front to black, then hold every LED at black even while
+  the OS continues shutting down.
 - Do not return to `Running` merely because the Power LED stays active briefly.
 - Power LED blinking does not enter `Sleeping`; shutdown-related states have priority over sleep reconciliation.
 - Power LED off -> `Off`.
-- Power LED still active after 120000 ms -> `Warn`.
-
-### Warn
-
-- Minimal deterministic shutdown warning state for a machine that did not power off after the normal shutdown request.
-- Remain in `Warn` while Power LED is active.
-- Power LED off -> `Off`.
+- Power LED still active after `Config::AwaitShutdownTimeoutMs` -> `Running`;
+  the shutdown request is considered ignored and normal ambient rendering
+  resumes.
 
 ### Sleeping
 
@@ -172,7 +187,10 @@ Transition effects initially ignore HDD activity, but architecture should allow 
 6. Normal ambient.
 7. Off/black.
 
-All effects are non-blocking functions of current time and local effect state.
+All effects are non-blocking functions of current time, the active animation
+mode, and local effect state. `AuroraRuntime` owns one `Aurora::Field` for its
+entire lifetime. Changing PC state or animation mode must not reset or clear
+that field. Only a full runtime reset may reseed and clear it.
 
 ## Effects
 
@@ -218,30 +236,45 @@ and apply the lowest color-progress ceiling.
 
 ### Startup
 
-The aurora becomes brighter and spreads outward, flashes, then smoothly settles into the normal ambient animation.
+Startup applies its own update loop to the existing Aurora field. The field
+becomes brighter and spreads outward, flashes, then smoothly settles into the
+normal ambient update loop. Entering ambient mode must preserve the field
+arrays, ignition pool, fixed-step accumulator, and PRNG state produced during
+startup.
 
 ### Shutdown
 
 - Choose a random origin from LEDs 23..32.
-- Emit a white flash/wave in both linear directions.
-- LEDs behind the wave remain black.
+- Use the same center-out spatial wave as Startup.
+- Preserve the current Aurora frame ahead of the wave front.
+- Emit a white front in both linear directions and smoothly fade each passed
+  LED to zero behind it.
 - At completion all LEDs remain black.
+- Do not clear or reseed the shared Aurora field; an ignored shutdown resumes
+  the preserved ambient field.
 
 ### Reset
 
 - Same broad wave concept as shutdown.
-- Red, faster, then resume the normal ambient animation.
+- Red, faster, then resume the normal ambient update loop.
 - Persistent PC state remains `Running`.
+- Reset evolves the existing Aurora field rather than replacing it with an
+  independent frame. At completion ambient processing continues from the
+  resulting field without reseeding or clearing it.
 
 ### Forced shutdown
 
 Triggered by holding the power button:
 
-- 0..2000 ms: increase brightness.
+- 0..500 ms: keep rendering the current ambient/reset animation; do not start
+  or report `ForcedShutdown`.
+- 500..2000 ms: render `Config::AuroraColor2Rgb` and increase brightness.
 - At 2000 ms: flash.
 - 2000..4000 ms: fade to black.
 - At 4000 ms: latch forced shutdown and remain black.
-- If released before 4000 ms, cancel the preview and execute the normal shutdown transition.
+- If released before 4000 ms, cancel the preview and execute the normal
+  shutdown transition. A release before 500 ms never renders a forced-shutdown
+  frame.
 
 ### Sleep
 
@@ -263,6 +296,10 @@ advances explicit `uint32_t` simulation time and calls `AuroraRuntime::step()`
 at most once per UI update. It does not use a fixed frontend logic tick or a
 substep catch-up loop. Frame scheduling, smoothing, field evolution, and
 transitions remain inside the core.
+
+`AuroraRuntime` selects one animation update loop per rendered frame with an
+internal `AnimationMode` switch. Mode entry initializes only mode-local timing,
+phase, and origin data; it never resets the shared Aurora field.
 
 The Python/PySide workbench is not a behavioral reference and is not used for
 FSM, HDD, Power LED, effect, or parity validation.

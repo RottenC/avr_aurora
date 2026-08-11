@@ -164,6 +164,7 @@ this contract.
   `src/avr/avr_config.h`.
 - Avoid hidden magic numbers.
 - Preserve extension points for a future over-temperature indication.
+- dot not run test until user asks about it
 
 ## Validation
 

@@ -137,6 +137,27 @@ bool testSessionInputsAndPause() {
   return true;
 }
 
+bool testResetPressAndReleaseDriveResetAnimation() {
+  SimulatorSession session;
+  session.powerLedGenerator().setMode(PowerLedSourceMode::On);
+  session.update(Config::FrameIntervalMs);
+  if (session.snapshot().pcState != PcState::Running) return false;
+
+  session.inputs().pressResetButton();
+  session.update(Config::FrameIntervalMs);
+  if (session.snapshot().pcState != PcState::Running ||
+      session.snapshot().animation != AnimationMode::Reset ||
+      session.snapshot().transition != TransitionEffect::Reset) {
+    return false;
+  }
+
+  session.inputs().releaseResetButton();
+  session.update(Config::FrameIntervalMs);
+  return session.snapshot().pcState == PcState::Running &&
+         session.snapshot().animation == AnimationMode::Reset &&
+         session.snapshot().transition == TransitionEffect::Reset;
+}
+
 }  // namespace
 
 int main() {
@@ -147,5 +168,6 @@ int main() {
   if (!testPowerGenerator()) return 5;
   if (!testHddGenerator()) return 6;
   if (!testSessionInputsAndPause()) return 7;
+  if (!testResetPressAndReleaseDriveResetAnimation()) return 8;
   return 0;
 }

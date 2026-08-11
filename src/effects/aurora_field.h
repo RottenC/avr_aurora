@@ -26,11 +26,14 @@ namespace Aurora
     void reset(uint32_t seed);
     void advance(uint32_t elapsedMs, uint8_t hddActivity = 0,
                  uint32_t nowMs = 0);
+    void exciteCell(uint8_t index, uint8_t minimumBrightness,
+                    uint8_t colorProgressCeiling = UINT8_MAX);
     Rgb8 pixel(uint8_t index) const;
     FieldCellDiagnostics diagnostics(uint8_t index) const;
 
     uint16_t brightnessQ8_8(uint8_t index) const;
     uint16_t backgroundBrightnessQ8_8(uint8_t index) const;
+    uint8_t outputBrightness(uint8_t index) const;
     uint8_t colorProgress(uint8_t index) const;
     uint32_t prngState() const { return prngState_; }
     uint8_t ticksUntilNextSpawn() const { return ticksUntilNextSpawn_; }

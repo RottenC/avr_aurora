@@ -14,9 +14,7 @@ endif()
 add_library(aurora_core STATIC
     src/core/aurora_runtime.cpp
     src/core/portable_math.cpp
-    src/core/renderer.cpp
     src/pc_state.cpp
-    src/effect_controller.cpp
     src/power_led_tracker.cpp
     src/hdd_activity.cpp
     src/effects/aurora_field.cpp

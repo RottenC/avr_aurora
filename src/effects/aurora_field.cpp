@@ -149,6 +149,19 @@ void Field::advance(uint32_t elapsedMs, uint8_t hddActivity,
   fixedStepAccumulatorMs_ = elapsedMs;
 }
 
+void Field::exciteCell(uint8_t index, uint8_t minimumBrightness,
+                       uint8_t colorProgressCeiling) {
+  if (index >= LedCount) return;
+
+  const uint16_t target = static_cast<uint16_t>(minimumBrightness) << 8;
+  if (brightness_[currentBank_][index] < target) {
+    brightness_[currentBank_][index] = target;
+  }
+  if (colorProgress_[currentBank_][index] > colorProgressCeiling) {
+    colorProgress_[currentBank_][index] = colorProgressCeiling;
+  }
+}
+
 Rgb8 Field::pixel(uint8_t index) const {
   const Rgb8 background = unpackRgb(Config::AuroraBackgroundRgb);
   if (index >= LedCount) return background;
@@ -182,6 +195,14 @@ uint16_t Field::brightnessQ8_8(uint8_t index) const {
 
 uint16_t Field::backgroundBrightnessQ8_8(uint8_t index) const {
   return index < LedCount ? backgroundBrightness_[index] : 0;
+}
+
+uint8_t Field::outputBrightness(uint8_t index) const {
+  if (index >= LedCount) return 0;
+  return static_cast<uint8_t>(
+      maxQ8_8(brightness_[currentBank_][index],
+              backgroundBrightness_[index]) >>
+      8);
 }
 
 uint8_t Field::colorProgress(uint8_t index) const {

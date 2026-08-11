@@ -33,8 +33,6 @@ const char *pcStateName(PcState state) {
       return "Sleeping";
     case PcState::AwaitShutdown:
       return "AwaitShutdown";
-    case PcState::Warn:
-      return "Warn";
   }
   return "Unknown";
 }
@@ -51,6 +49,26 @@ const char *transitionName(TransitionEffect transition) {
       return "ForcedShutdown";
     case TransitionEffect::Reset:
       return "Reset";
+  }
+  return "Unknown";
+}
+
+const char *animationName(AnimationMode animation) {
+  switch (animation) {
+    case AnimationMode::Off:
+      return "Off";
+    case AnimationMode::Startup:
+      return "Startup";
+    case AnimationMode::Ambient:
+      return "Ambient";
+    case AnimationMode::Reset:
+      return "Reset";
+    case AnimationMode::Shutdown:
+      return "Shutdown";
+    case AnimationMode::ForcedShutdown:
+      return "ForcedShutdown";
+    case AnimationMode::Sleep:
+      return "Sleep";
   }
   return "Unknown";
 }
@@ -114,6 +132,7 @@ void SimulatorApp::draw() {
     ImGui::Text("Simulation time: %u ms",
                 static_cast<unsigned>(session_.simulationTimeMs()));
     ImGui::Text("PC state: %s", pcStateName(snapshot.pcState));
+    ImGui::Text("Animation: %s", animationName(snapshot.animation));
     ImGui::Text("Transition: %s", transitionName(snapshot.transition));
     ImGui::Text("Frame updated: %s",
                 snapshot.frameUpdated ? "true" : "false");

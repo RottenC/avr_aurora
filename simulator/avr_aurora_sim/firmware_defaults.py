@@ -37,7 +37,7 @@ CPP_NAMES = {
     "POWER_HOLD_FORCED_MS": "PowerHoldForcedMs",
     "FORCED_FLASH_AT_MS": "ForcedFlashAtMs",
     "STARTING_TIMEOUT_MS": "StartingTimeoutMs",
-    "SHUTDOWN_WARNING_TIMEOUT_MS": "ShutdownWarningTimeoutMs",
+    "SHUTDOWN_WARNING_TIMEOUT_MS": "AwaitShutdownTimeoutMs",
     "STARTUP_DURATION_MS": "StartupDurationMs",
     "SHUTDOWN_DURATION_MS": "ShutdownDurationMs",
     "RESET_DURATION_MS": "ResetDurationMs",
