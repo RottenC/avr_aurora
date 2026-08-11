@@ -14,6 +14,40 @@ void assertRgb(const Aurora::Rgb8 &actual, uint8_t r, uint8_t g, uint8_t b) {
   TEST_ASSERT_EQUAL_UINT8(b, actual.b);
 }
 
+constexpr Aurora::Rgb8 unpackRgb(uint32_t packed) {
+  return {static_cast<uint8_t>(packed >> 16),
+          static_cast<uint8_t>(packed >> 8), static_cast<uint8_t>(packed)};
+}
+
+constexpr uint8_t referenceLerpU8(uint8_t from, uint8_t to,
+                                  uint8_t amount) {
+  return static_cast<uint8_t>(
+      (static_cast<uint32_t>(from) * (UINT8_MAX - amount) +
+       static_cast<uint32_t>(to) * amount) /
+      UINT8_MAX);
+}
+
+constexpr Aurora::Rgb8 referenceLerpRgb(const Aurora::Rgb8 &from,
+                                        const Aurora::Rgb8 &to,
+                                        uint8_t amount) {
+  return {referenceLerpU8(from.r, to.r, amount),
+          referenceLerpU8(from.g, to.g, amount),
+          referenceLerpU8(from.b, to.b, amount)};
+}
+
+constexpr Aurora::Rgb8 expectedPixel(uint8_t brightness,
+                                     uint8_t colorProgress) {
+  const Aurora::Rgb8 flare = referenceLerpRgb(
+      unpackRgb(Config::AuroraColor1Rgb),
+      unpackRgb(Config::AuroraColor2Rgb), colorProgress);
+  return referenceLerpRgb(unpackRgb(Config::AuroraBackgroundRgb), flare,
+                          brightness);
+}
+
+void assertRgb(const Aurora::Rgb8 &actual, const Aurora::Rgb8 &expected) {
+  assertRgb(actual, expected.r, expected.g, expected.b);
+}
+
 void assertFieldsEqual(const Aurora::Field &left, const Aurora::Field &right) {
   TEST_ASSERT_EQUAL_UINT32(left.prngState(), right.prngState());
   TEST_ASSERT_EQUAL_UINT8(left.ticksUntilNextSpawn(),
@@ -153,14 +187,20 @@ void test_aurora_color_progress_uses_independent_blur() {
   TEST_ASSERT_EQUAL_UINT8(expectedPeakSideProgress,
                           peak.colorProgress(29));
 
-  Aurora::Field rgb;
-  rgb.reset(1);
-  rgb.setCellForTest(0, kQ8_8Max, 0);
-  assertRgb(rgb.pixel(0), 26, 186, 148);
-  rgb.setCellForTest(0, kQ8_8Max, UINT8_MAX);
-  assertRgb(rgb.pixel(0), 110, 52, 124);
-  rgb.setCellForTest(0, static_cast<uint16_t>(128) << 8, 128);
-  assertRgb(rgb.pixel(0), 34, 59, 67);
+}
+
+void test_aurora_pixel_uses_configured_palette_and_brightness() {
+  Aurora::Field field;
+  field.reset(1);
+
+  field.setCellForTest(0, kQ8_8Max, 0);
+  assertRgb(field.pixel(0), expectedPixel(UINT8_MAX, 0));
+
+  field.setCellForTest(0, kQ8_8Max, UINT8_MAX);
+  assertRgb(field.pixel(0), expectedPixel(UINT8_MAX, UINT8_MAX));
+
+  field.setCellForTest(0, static_cast<uint16_t>(128) << 8, 128);
+  assertRgb(field.pixel(0), expectedPixel(128, 128));
 }
 
 void test_aurora_color_progress_survives_flare_fade_to_zero() {
@@ -512,6 +552,7 @@ void runAuroraTests() {
   RUN_TEST(test_aurora_initial_rgb_and_zero_elapsed);
   RUN_TEST(test_aurora_diffusion_uses_open_out_of_place_boundaries);
   RUN_TEST(test_aurora_color_progress_uses_independent_blur);
+  RUN_TEST(test_aurora_pixel_uses_configured_palette_and_brightness);
   RUN_TEST(test_aurora_color_progress_survives_flare_fade_to_zero);
   RUN_TEST(test_aurora_ignition_starts_without_immediate_brightness);
   RUN_TEST(test_aurora_ignition_target_curve_is_monotonic_and_exact);

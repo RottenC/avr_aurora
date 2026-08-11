@@ -26,6 +26,17 @@ ImU32 rgbColor(const Aurora::Rgb8 &color, uint8_t alpha = UINT8_MAX) {
   return IM_COL32(color.r, color.g, color.b, alpha);
 }
 
+uint8_t scaleColorChannel(uint8_t channel, float scale) {
+  const float scaled = channel * std::clamp(scale, 1.0F, 4.0F);
+  return static_cast<uint8_t>(std::min(scaled, 255.0F));
+}
+
+ImU32 scaledRgbColor(const Aurora::Rgb8 &color, float scale) {
+  return IM_COL32(scaleColorChannel(color.r, scale),
+                  scaleColorChannel(color.g, scale),
+                  scaleColorChannel(color.b, scale), UINT8_MAX);
+}
+
 float valueY(uint8_t value, float plotTop, float plotHeight) {
   return plotTop +
          (UINT8_MAX - static_cast<float>(value)) * plotHeight / UINT8_MAX;
@@ -42,6 +53,7 @@ void drawCenteredText(ImDrawList *drawList, float centerX, float y,
 }  // namespace
 
 void drawAuroraFieldView(const AuroraRuntime &runtime,
+                         float ledSquareBrightnessScale,
                          ImGuiWindowFlags windowFlags) {
   if (!ImGui::Begin("Aurora field + LED frame", nullptr, windowFlags)) {
     ImGui::End();
@@ -149,7 +161,9 @@ void drawAuroraFieldView(const AuroraRuntime &runtime,
       const ImVec2 ledMinimum(x - halfLedWidth, ledTopScreen);
       const ImVec2 ledMaximum(x + halfLedWidth,
                               ledTopScreen + LedHeight);
-      drawList->AddRectFilled(ledMinimum, ledMaximum, rgbColor(pixel));
+      drawList->AddRectFilled(
+          ledMinimum, ledMaximum,
+          scaledRgbColor(pixel, ledSquareBrightnessScale));
       drawList->AddRect(ledMinimum, ledMaximum,
                         IM_COL32(72, 76, 86, 255));
 

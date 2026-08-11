@@ -77,7 +77,8 @@ void SimulatorApp::draw() {
   ImGui::SetNextWindowPos(origin, ImGuiCond_Always);
   ImGui::SetNextWindowSize(ImVec2(availableSize.x, auroraHeight),
                            ImGuiCond_Always);
-  drawAuroraFieldView(session_.runtime(), DashboardPanelFlags);
+  drawAuroraFieldView(session_.runtime(), ledSquareBrightnessScale_,
+                      DashboardPanelFlags);
 
   ImGui::SetNextWindowPos(ImVec2(origin.x, origin.y + auroraHeight),
                           ImGuiCond_Always);
@@ -106,6 +107,9 @@ void SimulatorApp::draw() {
       }
       ImGui::EndCombo();
     }
+
+    ImGui::SliderFloat("LED square brightness", &ledSquareBrightnessScale_,
+                       1.0F, 4.0F, "%.1fx");
 
     ImGui::Text("Simulation time: %u ms",
                 static_cast<unsigned>(session_.simulationTimeMs()));

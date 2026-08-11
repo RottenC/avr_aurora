@@ -24,7 +24,7 @@ constexpr uint8_t AuroraDiffusionKernelSum =
     AuroraDiffusionSideWeight * 2 + AuroraDiffusionCenterWeight;
 constexpr uint32_t AuroraBackgroundRgb = 0x000000UL;
 constexpr uint32_t AuroraColor1Rgb = 0x1ABA94UL;
-constexpr uint32_t AuroraColor2Rgb = 0x6E347CUL;
+constexpr uint32_t AuroraColor2Rgb = 0xD600FFUL;
 constexpr uint16_t SleepTravelIntervalMs = 1700;
 constexpr uint8_t SleepSecondaryPointOffset = 29;
 constexpr uint8_t SleepBeatsPerMinute = 4;

@@ -32,3 +32,24 @@ Run pio run, fix all build errors, and report flash/SRAM usage plus hardware-onl
 ```
 
 Codex should replace the generated PlatformIO example in `src/main.cpp` and keep the result buildable for `pro16MHzatmega328`.
+
+## TuneMode
+
+TuneMode replaces the normal AVR runtime with a small serial-command loop.
+It retains raw strip-power DATA-pin safety and accepts newline-terminated
+commands at 115200 baud. The initial command is:
+
+```text
+set_color #RRGGBB 0x00..0xFF
+```
+
+Brightness is a linear 8-bit multiplier (`0x00` is black and `0xFF` is the
+requested RGB color). Build it directly with PlatformIO:
+
+```text
+pio run -e pro16MHzatmega328_tune
+```
+
+Or enable `-DTuneMode=ON` when configuring CMake. If PlatformIO is discoverable,
+the CMake build also builds the `aurora_tune_firmware` target; otherwise it
+still builds and tests the portable command parser.

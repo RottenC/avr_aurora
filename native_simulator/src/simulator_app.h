@@ -13,4 +13,5 @@ class SimulatorApp {
 
  private:
   SimulatorSession session_;
+  float ledSquareBrightnessScale_ = 2.0F;
 };
