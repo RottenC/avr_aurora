@@ -1,16 +1,14 @@
 #include <aurora/aurora_runtime.h>
 
-#include "config.h"
-
 int main() {
-  AuroraRuntime runtime(Config::runtimeConfig());
-  if (!runtime.configValid() || runtime.ledCount() != Aurora::LedCount) {
+  AuroraRuntime runtime;
+  if (runtime.ledCount() != Aurora::LedCount) {
     return 1;
   }
 
   runtime.reset(0x12345678UL, 0);
   AuroraInputFrame inputs;
-  inputs.powerLed = true;
+  inputs.powerLed = SignalState::High;
   inputs.stripPowerPresent = true;
   runtime.step(inputs, 0);
 

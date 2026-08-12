@@ -1,5 +1,21 @@
 #include <Arduino.h>
 
+#ifdef TuneMode
+
+#include "avr/avr_tune_mode.h"
+
+namespace {
+
+AvrTuneMode tuneMode;
+
+}  // namespace
+
+void setup() { tuneMode.begin(); }
+
+void loop() { tuneMode.update(); }
+
+#else
+
 #include "avr/avr_config.h"
 #include "avr/avr_inputs.h"
 #include "avr/avr_led_driver.h"
@@ -27,7 +43,7 @@ uint32_t collectAuroraSeed() {
 AvrInputs inputs;
 AvrLedDriver ledDriver;
 AvrSerialDebug debug;
-AuroraRuntime runtime(Config::runtimeConfig());
+AuroraRuntime runtime;
 
 }  // namespace
 
@@ -53,3 +69,5 @@ void loop() {
                    snapshot.frameUpdated);
   debug.update(inputFrame, snapshot, nowMs);
 }
+
+#endif

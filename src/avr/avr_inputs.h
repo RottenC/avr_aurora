@@ -18,16 +18,14 @@ class AvrInputs {
     uint32_t changedAt = 0;
   };
 
-  void updateOne(Debounced &input, bool raw, uint32_t nowMs, bool &pressed,
-                 bool &released);
-  static uint8_t consumeHddEdges();
+  SignalState updateOne(Debounced &input, bool raw, uint32_t nowMs);
 
   uint32_t lastPollMs_ = 0;
   Debounced powerLed_;
   Debounced powerButton_;
   Debounced resetButton_;
   Debounced stripPower_;
-  Debounced debugButton_;
   AuroraInputFrame frame_{};
+  bool hddHigh_ = false;
   bool rawStripPowerPresent_ = false;
 };

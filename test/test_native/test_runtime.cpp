@@ -6,10 +6,14 @@
 
 namespace {
 
+SignalState signalState(bool high) {
+  return high ? SignalState::High : SignalState::Low;
+}
+
 AuroraInputFrame inputFrame(bool powerLed = false,
                             bool stripPowerPresent = true) {
   AuroraInputFrame input;
-  input.powerLed = powerLed;
+  input.powerLed = signalState(powerLed);
   input.stripPowerPresent = stripPowerPresent;
   return input;
 }
@@ -37,6 +41,12 @@ void assertTransition(const AuroraRuntime &runtime,
       static_cast<uint8_t>(runtime.snapshot().transition));
 }
 
+void assertAnimation(const AuroraRuntime &runtime, AnimationMode expected) {
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(expected),
+      static_cast<uint8_t>(runtime.snapshot().animation));
+}
+
 void reconcileRuntimeToRunning(AuroraRuntime &runtime, uint32_t nowMs = 0) {
   AuroraInputFrame input = inputFrame(true);
   runtime.step(input, nowMs);
@@ -45,19 +55,18 @@ void reconcileRuntimeToRunning(AuroraRuntime &runtime, uint32_t nowMs = 0) {
 
 void startPowerHold(AuroraRuntime &runtime, uint32_t nowMs) {
   AuroraInputFrame input = inputFrame(true);
-  input.powerButton = true;
-  input.powerButtonPressed = true;
+  input.powerButton = SignalState::Rising;
   runtime.step(input, nowMs);
 }
 
 void releasePowerButton(AuroraRuntime &runtime, uint32_t nowMs) {
   AuroraInputFrame input = inputFrame(true);
-  input.powerButtonReleased = true;
+  input.powerButton = SignalState::Falling;
   runtime.step(input, nowMs);
 }
 
 void test_runtime_01_cold_start_is_off_with_complete_black_frame() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(123, 10);
   AuroraInputFrame input = inputFrame(false, false);
   runtime.step(input, 10);
@@ -72,11 +81,10 @@ void test_runtime_01_cold_start_is_off_with_complete_black_frame() {
 }
 
 void test_runtime_02_power_button_starts_and_waits_for_strip_power() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(1);
   AuroraInputFrame input = inputFrame(false, false);
-  input.powerButton = true;
-  input.powerButtonPressed = true;
+  input.powerButton = SignalState::Rising;
   runtime.step(input, 100);
 
   assertState(runtime, PcState::Starting);
@@ -86,14 +94,19 @@ void test_runtime_02_power_button_starts_and_waits_for_strip_power() {
 }
 
 void test_runtime_03_strip_power_loss_cancels_and_restarts_startup() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(1);
   AuroraInputFrame input = inputFrame();
-  input.powerButtonPressed = true;
+  input.powerButton = SignalState::Rising;
   runtime.step(input, 100);
   assertTransition(runtime, TransitionEffect::Startup);
+  const uint8_t startupOrigin = static_cast<uint8_t>(
+      Config::ShutdownOriginMin +
+      (((100U >> 2) % (Config::ShutdownOriginMax -
+                       Config::ShutdownOriginMin + 1U))));
+  TEST_ASSERT_TRUE(runtime.ledFrame()[startupOrigin] != Aurora::Rgb8{});
 
-  input.powerButtonPressed = false;
+  input.powerButton = SignalState::High;
   input.stripPowerPresent = false;
   runtime.step(input, 200);
   assertState(runtime, PcState::Starting);
@@ -107,14 +120,14 @@ void test_runtime_03_strip_power_loss_cancels_and_restarts_startup() {
 }
 
 void test_runtime_04_startup_needs_visual_completion_and_power_confirmation() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(5);
   AuroraInputFrame input = inputFrame();
-  input.powerButtonPressed = true;
+  input.powerButton = SignalState::Rising;
   runtime.step(input, 100);
 
-  input.powerButtonPressed = false;
-  input.powerLed = true;
+  input.powerButton = SignalState::High;
+  input.powerLed = SignalState::High;
   runtime.step(input, 100 + Config::StartupDurationMs - 1);
   assertState(runtime, PcState::Starting);
   assertTransition(runtime, TransitionEffect::Startup);
@@ -128,34 +141,34 @@ void test_runtime_04_startup_needs_visual_completion_and_power_confirmation() {
 }
 
 void test_runtime_05_completed_startup_waits_for_late_power_confirmation() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(6);
   AuroraInputFrame input = inputFrame();
-  input.powerButtonPressed = true;
+  input.powerButton = SignalState::Rising;
   runtime.step(input, 50);
-  input.powerButtonPressed = false;
+  input.powerButton = SignalState::High;
   runtime.step(input, 50 + Config::StartupDurationMs);
   assertState(runtime, PcState::Starting);
   assertTransition(runtime, TransitionEffect::None);
 
-  input.powerLed = true;
+  input.powerLed = SignalState::High;
   runtime.step(input, 50 + Config::StartupDurationMs + 100);
   assertState(runtime, PcState::Running);
 }
 
 void test_runtime_06_running_sleeps_and_wakes_from_classified_power_led() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(7);
   AuroraInputFrame input = inputFrame(true);
   runtime.step(input, 0);
 
-  input.powerLed = false;
+  input.powerLed = SignalState::Falling;
   runtime.step(input, 200);
-  input.powerLed = true;
+  input.powerLed = SignalState::Rising;
   runtime.step(input, 400);
-  input.powerLed = false;
+  input.powerLed = SignalState::Falling;
   runtime.step(input, 600);
-  input.powerLed = true;
+  input.powerLed = SignalState::Rising;
   runtime.step(input, 800);
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PowerLedMode::Blinking),
                           static_cast<uint8_t>(
@@ -167,12 +180,13 @@ void test_runtime_06_running_sleeps_and_wakes_from_classified_power_led() {
 }
 
 void test_runtime_07_short_power_press_requests_normal_shutdown() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(8);
   reconcileRuntimeToRunning(runtime);
   startPowerHold(runtime, 100);
   TEST_ASSERT_EQUAL_UINT32(0, runtime.snapshot().powerHoldElapsedMs);
-  assertTransition(runtime, TransitionEffect::ForcedShutdown);
+  assertAnimation(runtime, AnimationMode::Ambient);
+  assertTransition(runtime, TransitionEffect::None);
 
   releasePowerButton(runtime, 500);
   assertState(runtime, PcState::AwaitShutdown);
@@ -187,7 +201,7 @@ void test_runtime_08_forced_shutdown_release_boundaries() {
   const bool expectedForced[] = {false, true, true};
 
   for (uint8_t index = 0; index < 3; ++index) {
-    AuroraRuntime runtime(Config::runtimeConfig());
+    AuroraRuntime runtime;
     runtime.reset(9);
     reconcileRuntimeToRunning(runtime);
     startPowerHold(runtime, 100);
@@ -202,20 +216,19 @@ void test_runtime_08_forced_shutdown_release_boundaries() {
 }
 
 void test_runtime_09_forced_shutdown_latches_before_release() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(10);
   reconcileRuntimeToRunning(runtime);
   startPowerHold(runtime, 100);
 
   AuroraInputFrame input = inputFrame(true);
-  input.powerButton = true;
+  input.powerButton = SignalState::High;
   runtime.step(input, 100 + Config::PowerHoldForcedMs);
   TEST_ASSERT_TRUE(runtime.snapshot().forcedShutdownLatched);
   TEST_ASSERT_EQUAL_UINT32(Config::PowerHoldForcedMs,
                            runtime.snapshot().powerHoldElapsedMs);
 
-  input.powerButton = false;
-  input.powerButtonReleased = true;
+  input.powerButton = SignalState::Falling;
   runtime.step(input, 200 + Config::PowerHoldForcedMs);
   assertState(runtime, PcState::AwaitShutdown);
   assertTransition(runtime, TransitionEffect::ForcedShutdown);
@@ -223,21 +236,26 @@ void test_runtime_09_forced_shutdown_latches_before_release() {
 }
 
 void test_runtime_10_reset_transition_keeps_running_persistent_state() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(11);
   reconcileRuntimeToRunning(runtime);
   AuroraInputFrame input = inputFrame(true);
-  input.resetButton = true;
-  input.resetButtonPressed = true;
+  input.resetButton = SignalState::Rising;
   runtime.step(input, 250);
 
   assertState(runtime, PcState::Running);
   assertTransition(runtime, TransitionEffect::Reset);
   TEST_ASSERT_FALSE(runtime.snapshot().stateChanged);
+  const uint8_t resetOrigin = static_cast<uint8_t>(
+      Config::ShutdownOriginMin +
+      (((250U >> 2) % (Config::ShutdownOriginMax -
+                       Config::ShutdownOriginMin + 1U))));
+  TEST_ASSERT_TRUE(runtime.ledFrame()[resetOrigin] ==
+                   (Aurora::Rgb8{Config::ResetWaveBrightness, 0, 0}));
 }
 
 void test_runtime_11_await_shutdown_reaches_off_after_power_filter() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(12);
   reconcileRuntimeToRunning(runtime);
   startPowerHold(runtime, 100);
@@ -251,31 +269,33 @@ void test_runtime_11_await_shutdown_reaches_off_after_power_filter() {
   assertTransition(runtime, TransitionEffect::None);
 }
 
-void test_runtime_12_await_shutdown_timeout_reaches_warn() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+void test_runtime_12_await_shutdown_timeout_returns_to_running() {
+  AuroraRuntime runtime;
   runtime.reset(13);
   reconcileRuntimeToRunning(runtime);
   startPowerHold(runtime, 100);
   releasePowerButton(runtime, 200);
 
   AuroraInputFrame input = inputFrame(true);
-  runtime.step(input, 200 + Config::ShutdownWarningTimeoutMs - 1);
+  runtime.step(input, 200 + Config::AwaitShutdownTimeoutMs - 1);
   assertState(runtime, PcState::AwaitShutdown);
-  runtime.step(input, 200 + Config::ShutdownWarningTimeoutMs);
-  assertState(runtime, PcState::Warn);
+  runtime.step(input, 200 + Config::AwaitShutdownTimeoutMs);
+  assertState(runtime, PcState::Running);
+  assertAnimation(runtime, AnimationMode::Ambient);
+  assertTransition(runtime, TransitionEffect::None);
 }
 
 void test_runtime_13_same_seed_and_timeline_produce_identical_frames() {
-  AuroraRuntime left(Config::runtimeConfig());
-  AuroraRuntime right(Config::runtimeConfig());
+  AuroraRuntime left;
+  AuroraRuntime right;
   left.reset(0x12345678UL);
   right.reset(0x12345678UL);
   AuroraInputFrame input = inputFrame(true);
 
   for (uint16_t frame = 0; frame < 150; ++frame) {
     const uint32_t nowMs = static_cast<uint32_t>(frame) * 20;
-    input.hddLed = (frame % 7) < 3;
-    input.hddActiveEdges = frame % 11 == 0 ? 1 : 0;
+    input.hddLed = signalState((frame % 7) < 3);
+    input.hddContribution = frame % 11 == 0 ? 64 : 0;
     left.step(input, nowMs);
     right.step(input, nowMs);
     TEST_ASSERT_EQUAL_HEX32(frameHash(left), frameHash(right));
@@ -283,9 +303,9 @@ void test_runtime_13_same_seed_and_timeline_produce_identical_frames() {
 }
 
 void test_runtime_14_fixed_step_aurora_matches_different_step_sizes() {
-  AuroraRuntime step5(Config::runtimeConfig());
-  AuroraRuntime step20(Config::runtimeConfig());
-  AuroraRuntime step100(Config::runtimeConfig());
+  AuroraRuntime step5;
+  AuroraRuntime step20;
+  AuroraRuntime step100;
   step5.reset(321);
   step20.reset(321);
   step100.reset(321);
@@ -309,14 +329,14 @@ void test_runtime_14_fixed_step_aurora_matches_different_step_sizes() {
 }
 
 void test_runtime_15_timestamp_wrap_preserves_hold_and_render_timing() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   const uint32_t resetAt = UINT32_MAX - 20;
   runtime.reset(14, resetAt);
   reconcileRuntimeToRunning(runtime, resetAt);
   startPowerHold(runtime, UINT32_MAX - 10);
 
   AuroraInputFrame input = inputFrame(true);
-  input.powerButton = true;
+  input.powerButton = SignalState::High;
   runtime.step(input, Config::PowerHoldForcedMs - 11);
   TEST_ASSERT_TRUE(runtime.snapshot().forcedShutdownLatched);
   TEST_ASSERT_EQUAL_UINT32(Config::PowerHoldForcedMs,
@@ -325,35 +345,46 @@ void test_runtime_15_timestamp_wrap_preserves_hold_and_render_timing() {
 }
 
 void test_runtime_16_strip_loss_blacks_frame_without_erasing_running_state() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(15);
   reconcileRuntimeToRunning(runtime);
+  AuroraInputFrame litInput = inputFrame(true, true);
+  litInput.hddLed = SignalState::High;
+  for (uint32_t nowMs = Config::FrameIntervalMs; nowMs <= 600;
+       nowMs += Config::FrameIntervalMs) {
+    runtime.step(litInput, nowMs);
+  }
   const uint32_t litHash = frameHash(runtime);
+  const uint32_t prngBeforePowerLoss = runtime.auroraPrngStateForTest();
 
   AuroraInputFrame input = inputFrame(true, false);
-  runtime.step(input, Config::FrameIntervalMs);
+  runtime.step(input, 600 + Config::FrameIntervalMs);
   assertState(runtime, PcState::Running);
   TEST_ASSERT_NOT_EQUAL(litHash, frameHash(runtime));
   for (uint8_t index = 0; index < runtime.ledCount(); ++index) {
     TEST_ASSERT_TRUE(runtime.ledFrame()[index] == Aurora::Rgb8{});
   }
+  TEST_ASSERT_EQUAL_HEX32(prngBeforePowerLoss,
+                          runtime.auroraPrngStateForTest());
 
   input.stripPowerPresent = true;
-  runtime.step(input, Config::FrameIntervalMs * 2);
+  runtime.step(input, 600 + Config::FrameIntervalMs * 2);
   assertState(runtime, PcState::Running);
+  TEST_ASSERT_EQUAL_HEX32(prngBeforePowerLoss,
+                          runtime.auroraPrngStateForTest());
 }
 
-void test_runtime_17_hdd_edges_accumulate_until_core_update_tick() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+void test_runtime_17_hdd_smoothing_uses_actual_elapsed_time() {
+  AuroraRuntime runtime;
   runtime.reset(16);
   AuroraInputFrame input = inputFrame();
-  input.hddActiveEdges = 1;
+  input.hddLed = SignalState::High;
   runtime.step(input, Config::HddUpdateMs - 1);
-  TEST_ASSERT_EQUAL_UINT8(0, runtime.snapshot().hddActivity);
+  TEST_ASSERT_EQUAL_UINT8(Config::HddActiveRise - 1,
+                          runtime.snapshot().hddActivity);
 
-  input.hddActiveEdges = 0;
   runtime.step(input, Config::HddUpdateMs);
-  TEST_ASSERT_EQUAL_UINT8(Config::HddEdgeBoost - Config::HddInactiveDecay,
+  TEST_ASSERT_EQUAL_UINT8(Config::HddActiveRise,
                           runtime.snapshot().hddActivity);
 }
 
@@ -379,113 +410,11 @@ void test_runtime_18_portable_color_helpers_match_fastled_anchors() {
   TEST_ASSERT_EQUAL_UINT8(64, Aurora::scale8(128, 128));
 }
 
-void assertConfigError(const AuroraRuntimeConfig &config,
-                       AuroraConfigError expected) {
-  TEST_ASSERT_EQUAL_UINT8(
-      static_cast<uint8_t>(expected),
-      static_cast<uint8_t>(validateAuroraRuntimeConfig(config)));
-  AuroraRuntime runtime(config);
-  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(expected),
-                          static_cast<uint8_t>(runtime.configError()));
-  TEST_ASSERT_FALSE(runtime.configValid());
-  runtime.step(inputFrame(true), 100);
-  assertState(runtime, PcState::Off);
-}
-
-void test_runtime_19_default_configuration_is_valid() {
-  const AuroraRuntimeConfig config = Config::runtimeConfig();
-  TEST_ASSERT_EQUAL_UINT8(
-      static_cast<uint8_t>(AuroraConfigError::None),
-      static_cast<uint8_t>(validateAuroraRuntimeConfig(config)));
-  AuroraRuntime runtime(config);
-  TEST_ASSERT_TRUE(runtime.configValid());
-}
-
-void test_runtime_20_invalid_update_intervals_are_rejected() {
-  AuroraRuntimeConfig config = Config::runtimeConfig();
-  config.frameIntervalMs = 0;
-  assertConfigError(config, AuroraConfigError::FrameIntervalZero);
-
-  config = Config::runtimeConfig();
-  config.hdd.updateMs = 0;
-  assertConfigError(config, AuroraConfigError::HddUpdateIntervalZero);
-
-  config = Config::runtimeConfig();
-  config.auroraField.fixedStepMs = 0;
-  assertConfigError(config, AuroraConfigError::AuroraFixedStepZero);
-
-  config = Config::runtimeConfig();
-  config.auroraField.ticksPerFade = 0;
-  assertConfigError(config, AuroraConfigError::AuroraFadePeriodZero);
-}
-
-void test_runtime_21_invalid_spawn_ranges_are_rejected() {
-  AuroraRuntimeConfig config = Config::runtimeConfig();
-  config.auroraField.spawnMinTicks = 0;
-  assertConfigError(config, AuroraConfigError::AuroraSpawnTickRange);
-
-  config = Config::runtimeConfig();
-  config.auroraField.spawnMinTicks =
-      config.auroraField.spawnMaxTicks + 1;
-  assertConfigError(config, AuroraConfigError::AuroraSpawnTickRange);
-
-  config = Config::runtimeConfig();
-  config.auroraField.spawnMinCount = 0;
-  assertConfigError(config, AuroraConfigError::AuroraSpawnCountRange);
-
-  config = Config::runtimeConfig();
-  config.auroraField.spawnMinCount =
-      config.auroraField.spawnMaxCount + 1;
-  assertConfigError(config, AuroraConfigError::AuroraSpawnCountRange);
-
-  config = Config::runtimeConfig();
-  config.auroraField.spawnMaxCount = Aurora::LedCount + 1;
-  assertConfigError(
-      config, AuroraConfigError::AuroraSpawnCountExceedsLedCount);
-}
-
-void test_runtime_22_invalid_diffusion_is_rejected() {
-  AuroraRuntimeConfig config = Config::runtimeConfig();
-  config.auroraField.diffusionKernelSum = 0;
-  assertConfigError(config,
-                    AuroraConfigError::AuroraDiffusionKernelSumZero);
-
-  config = Config::runtimeConfig();
-  ++config.auroraField.diffusionKernelSum;
-  assertConfigError(config,
-                    AuroraConfigError::AuroraDiffusionKernelSumMismatch);
-}
-
-void test_runtime_23_invalid_renderer_configuration_is_rejected() {
-  AuroraRuntimeConfig config = Config::runtimeConfig();
-  config.renderer.sleep.travelIntervalMs = 0;
-  assertConfigError(config, AuroraConfigError::SleepIntervalZero);
-
-  config = Config::runtimeConfig();
-  config.renderer.sleep.secondaryBrightnessDivisor = 0;
-  assertConfigError(config, AuroraConfigError::SleepBrightnessDivisorZero);
-
-  config = Config::runtimeConfig();
-  config.renderer.transition.shutdownOriginMin =
-      config.renderer.transition.shutdownOriginMax + 1;
-  assertConfigError(config, AuroraConfigError::ShutdownOriginRange);
-
-  config = Config::runtimeConfig();
-  config.renderer.transition.shutdownOriginMax = Aurora::LedCount;
-  assertConfigError(config, AuroraConfigError::ShutdownOriginRange);
-
-  config = Config::runtimeConfig();
-  config.renderer.transition.forcedFlashAtMs =
-      config.pcState.forcedHoldMs + 1;
-  assertConfigError(config,
-                    AuroraConfigError::ForcedFlashAfterForcedHold);
-}
-
 void test_runtime_24_transition_snapshot_start_completion_and_unchanged() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(19);
   AuroraInputFrame input = inputFrame(false, true);
-  input.powerButtonPressed = true;
+  input.powerButton = SignalState::Rising;
   runtime.step(input, 100);
   TEST_ASSERT_TRUE(runtime.snapshot().transitionChanged);
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(TransitionEffect::None),
@@ -493,7 +422,7 @@ void test_runtime_24_transition_snapshot_start_completion_and_unchanged() {
                               runtime.snapshot().previousTransition));
   assertTransition(runtime, TransitionEffect::Startup);
 
-  input.powerButtonPressed = false;
+  input.powerButton = SignalState::High;
   runtime.step(input, 101);
   TEST_ASSERT_FALSE(runtime.snapshot().transitionChanged);
 
@@ -506,14 +435,37 @@ void test_runtime_24_transition_snapshot_start_completion_and_unchanged() {
 }
 
 void test_runtime_25_transition_snapshot_forced_replaced_by_shutdown() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(20);
   reconcileRuntimeToRunning(runtime);
   startPowerHold(runtime, 100);
+  TEST_ASSERT_FALSE(runtime.snapshot().transitionChanged);
+  assertTransition(runtime, TransitionEffect::None);
+
+  AuroraInputFrame held = inputFrame(true);
+  held.powerButton = SignalState::High;
+  runtime.step(held, 100 + Config::ForcedShutdownDelayMs - 1);
+  assertTransition(runtime, TransitionEffect::None);
+
+  runtime.step(held, 100 + Config::ForcedShutdownDelayMs);
   TEST_ASSERT_TRUE(runtime.snapshot().transitionChanged);
   assertTransition(runtime, TransitionEffect::ForcedShutdown);
+  TEST_ASSERT_EQUAL_UINT32(100 + Config::ForcedShutdownDelayMs,
+                           runtime.snapshot().transitionStartedAtMs);
+  TEST_ASSERT_EQUAL_UINT32(
+      Config::PowerHoldForcedMs - Config::ForcedShutdownDelayMs,
+      runtime.snapshot().transitionDurationMs);
+  const Aurora::Rgb8 forcedInitialColor = {
+      Aurora::scale8(static_cast<uint8_t>(Config::AuroraColor2Rgb >> 16),
+                     Config::ForcedInitialBrightness),
+      Aurora::scale8(static_cast<uint8_t>(Config::AuroraColor2Rgb >> 8),
+                     Config::ForcedInitialBrightness),
+      Aurora::scale8(static_cast<uint8_t>(Config::AuroraColor2Rgb),
+                     Config::ForcedInitialBrightness),
+  };
+  TEST_ASSERT_TRUE(runtime.ledFrame()[0] == forcedInitialColor);
 
-  releasePowerButton(runtime, 500);
+  releasePowerButton(runtime, 700);
   TEST_ASSERT_TRUE(runtime.snapshot().transitionChanged);
   TEST_ASSERT_EQUAL_UINT8(
       static_cast<uint8_t>(TransitionEffect::ForcedShutdown),
@@ -522,16 +474,16 @@ void test_runtime_25_transition_snapshot_forced_replaced_by_shutdown() {
 }
 
 void test_runtime_26_transition_snapshot_reset_completes_to_none() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(21);
   reconcileRuntimeToRunning(runtime);
   AuroraInputFrame input = inputFrame(true);
-  input.resetButtonPressed = true;
+  input.resetButton = SignalState::Rising;
   runtime.step(input, 100);
   assertTransition(runtime, TransitionEffect::Reset);
   TEST_ASSERT_TRUE(runtime.snapshot().transitionChanged);
 
-  input.resetButtonPressed = false;
+  input.resetButton = SignalState::High;
   runtime.step(input, 100 + Config::ResetDurationMs);
   assertTransition(runtime, TransitionEffect::None);
   TEST_ASSERT_TRUE(runtime.snapshot().transitionChanged);
@@ -541,12 +493,12 @@ void test_runtime_26_transition_snapshot_reset_completes_to_none() {
 }
 
 void test_runtime_27_runtime_prepares_transition_timing() {
-  AuroraRuntime runtime(Config::runtimeConfig());
+  AuroraRuntime runtime;
   runtime.reset(22);
   AuroraInputFrame input = inputFrame(false, true);
-  input.powerButtonPressed = true;
+  input.powerButton = SignalState::Rising;
   runtime.step(input, 100);
-  input.powerButtonPressed = false;
+  input.powerButton = SignalState::High;
   runtime.step(input, 100 + Config::StartupDurationMs / 2);
 
   TEST_ASSERT_EQUAL_UINT32(Config::StartupDurationMs,
@@ -557,71 +509,211 @@ void test_runtime_27_runtime_prepares_transition_timing() {
                           runtime.snapshot().transitionProgress);
 }
 
-uint8_t countLitPixels(const AuroraRenderer &renderer) {
-  uint8_t count = 0;
-  for (uint8_t index = 0; index < renderer.ledCount(); ++index) {
-    if (renderer.frame()[index] != Aurora::Rgb8{}) ++count;
-  }
-  return count;
+void test_runtime_28_startup_reuses_field_when_ambient_begins() {
+  constexpr uint32_t seed = 23;
+  AuroraRuntime runtime;
+  runtime.reset(seed);
+  const uint32_t resetPrngState = runtime.auroraPrngStateForTest();
+
+  AuroraInputFrame input = inputFrame(false, true);
+  input.powerButton = SignalState::Rising;
+  runtime.step(input, 100);
+  assertAnimation(runtime, AnimationMode::Startup);
+
+  input.powerButton = SignalState::High;
+  input.powerLed = SignalState::High;
+  runtime.step(input, 100 + Config::StartupDurationMs);
+  assertAnimation(runtime, AnimationMode::Ambient);
+  TEST_ASSERT_NOT_EQUAL(resetPrngState, runtime.auroraPrngStateForTest());
 }
 
-void test_runtime_28_renderer_consumes_prepared_timing_context() {
-  AuroraRenderer renderer(Config::rendererConfig(),
-                          Config::auroraFieldConfig());
-  renderer.reset(23);
-  AuroraRenderContext context;
-  context.pcState = PcState::Starting;
-  context.transition = TransitionEffect::Startup;
-  context.transitionElapsedMs = 100;
-  context.transitionDurationMs = 200;
-  context.transitionProgress = 127;
-  context.logicalStripPowerPresent = true;
-  renderer.render(context);
-  TEST_ASSERT_EQUAL_UINT8(29, countLitPixels(renderer));
+void test_runtime_29_signal_transitions_are_one_update_events() {
+  AuroraRuntime runtime;
+  runtime.reset(0x1234ABCDUL, 0);
+  reconcileRuntimeToRunning(runtime);
 
-  context.transitionDurationMs = 400;
-  context.transitionProgress = 63;
-  renderer.render(context);
-  TEST_ASSERT_EQUAL_UINT8(15, countLitPixels(renderer));
-}
-
-AuroraInputFrame acceleratedInput(uint32_t simulationTimeMs) {
   AuroraInputFrame input = inputFrame(true, true);
-  input.hddLed = (simulationTimeMs / 30U) % 2U != 0;
-  input.hddActiveEdges = simulationTimeMs % 60U == 0 ? 1 : 0;
-  return input;
+  input.powerButton = SignalState::Rising;
+  runtime.step(input, 100);
+  assertTransition(runtime, TransitionEffect::None);
+  TEST_ASSERT_EQUAL_UINT32(0, runtime.snapshot().transitionStartedAtMs);
+
+  input.powerButton = SignalState::High;
+  runtime.step(input, 200);
+  TEST_ASSERT_FALSE(runtime.snapshot().transitionChanged);
+  TEST_ASSERT_EQUAL_UINT32(0, runtime.snapshot().transitionStartedAtMs);
+
+  runtime.step(input, 100 + Config::ForcedShutdownDelayMs);
+  assertTransition(runtime, TransitionEffect::ForcedShutdown);
+  TEST_ASSERT_TRUE(runtime.snapshot().transitionChanged);
+  TEST_ASSERT_EQUAL_UINT32(100 + Config::ForcedShutdownDelayMs,
+                           runtime.snapshot().transitionStartedAtMs);
+
+  input.powerButton = SignalState::Falling;
+  runtime.step(input, 700);
+  assertTransition(runtime, TransitionEffect::Shutdown);
+  TEST_ASSERT_TRUE(runtime.snapshot().transitionChanged);
+  const uint32_t shutdownStartedAt =
+      runtime.snapshot().transitionStartedAtMs;
+
+  input.powerButton = SignalState::Low;
+  runtime.step(input, 701);
+  TEST_ASSERT_FALSE(runtime.snapshot().transitionChanged);
+  TEST_ASSERT_EQUAL_UINT32(shutdownStartedAt,
+                           runtime.snapshot().transitionStartedAtMs);
 }
 
-void test_runtime_29_accelerated_playback_uses_deterministic_substeps() {
-  AuroraRuntime regular(Config::runtimeConfig());
-  AuroraRuntime accelerated(Config::runtimeConfig());
-  regular.reset(0x1234ABCDUL, 0);
-  accelerated.reset(0x1234ABCDUL, 0);
-  regular.step(acceleratedInput(0), 0);
-  accelerated.step(acceleratedInput(0), 0);
+void test_runtime_30_reset_and_ambient_advance_one_shared_field() {
+  AuroraRuntime resetting;
+  AuroraRuntime ambient;
+  resetting.reset(0x0BADCAFEUL);
+  ambient.reset(0x0BADCAFEUL);
+  reconcileRuntimeToRunning(resetting);
+  reconcileRuntimeToRunning(ambient);
 
-  for (uint32_t nowMs = 10; nowMs <= 2000; nowMs += 10) {
-    regular.step(acceleratedInput(nowMs), nowMs);
+  AuroraInputFrame normal = inputFrame(true, true);
+  for (uint32_t nowMs = Config::FrameIntervalMs; nowMs <= 600;
+       nowMs += Config::FrameIntervalMs) {
+    resetting.step(normal, nowMs);
+    ambient.step(normal, nowMs);
   }
 
-  uint32_t simulationTimeMs = 0;
-  uint16_t accumulatorMs = 0;
-  for (uint8_t uiFrame = 0; uiFrame < 20; ++uiFrame) {
-    accumulatorMs += 100;
-    while (accumulatorMs >= 10) {
-      simulationTimeMs += 10;
-      accelerated.step(acceleratedInput(simulationTimeMs),
-                       simulationTimeMs);
-      accumulatorMs -= 10;
-    }
+  AuroraInputFrame resetInput = normal;
+  resetInput.resetButton = SignalState::Rising;
+  resetting.step(resetInput, 620);
+  ambient.step(normal, 620);
+  assertAnimation(resetting, AnimationMode::Reset);
+
+  const uint8_t resetOrigin = static_cast<uint8_t>(
+      Config::ShutdownOriginMin +
+      (((620U >> 2) % (Config::ShutdownOriginMax -
+                       Config::ShutdownOriginMin + 1U))));
+  TEST_ASSERT_GREATER_OR_EQUAL_UINT16(
+      static_cast<uint16_t>(Config::ResetWaveBrightness) << 8,
+      resetting.auroraDiagnostics(resetOrigin).brightnessQ8_8);
+
+  resetInput.resetButton = SignalState::High;
+  const uint32_t finishedAt = 620 + Config::ResetDurationMs;
+  for (uint32_t nowMs = 640; nowMs <= finishedAt;
+       nowMs += Config::FrameIntervalMs) {
+    resetting.step(resetInput, nowMs);
+    ambient.step(normal, nowMs);
+  }
+  if ((finishedAt - 640) % Config::FrameIntervalMs != 0) {
+    resetting.step(resetInput, finishedAt);
+    ambient.step(normal, finishedAt);
   }
 
-  TEST_ASSERT_EQUAL_UINT32(frameHash(regular), frameHash(accelerated));
-  TEST_ASSERT_EQUAL_UINT8(
-      static_cast<uint8_t>(regular.snapshot().pcState),
-      static_cast<uint8_t>(accelerated.snapshot().pcState));
-  TEST_ASSERT_EQUAL_UINT8(regular.snapshot().hddActivity,
-                          accelerated.snapshot().hddActivity);
+  assertAnimation(resetting, AnimationMode::Ambient);
+  TEST_ASSERT_EQUAL_HEX32(ambient.auroraPrngStateForTest(),
+                          resetting.auroraPrngStateForTest());
+}
+
+void test_runtime_31_repeated_reset_restarts_only_animation_clock() {
+  AuroraRuntime runtime;
+  runtime.reset(31);
+  const uint32_t resetPrngState = runtime.auroraPrngStateForTest();
+  reconcileRuntimeToRunning(runtime);
+
+  AuroraInputFrame input = inputFrame(true, true);
+  for (uint32_t nowMs = Config::FrameIntervalMs; nowMs <= 600;
+       nowMs += Config::FrameIntervalMs) {
+    runtime.step(input, nowMs);
+  }
+  input.resetButton = SignalState::Rising;
+  runtime.step(input, 700);
+  TEST_ASSERT_EQUAL_UINT32(700, runtime.snapshot().transitionStartedAtMs);
+
+  runtime.step(input, 900);
+  assertAnimation(runtime, AnimationMode::Reset);
+  TEST_ASSERT_EQUAL_UINT32(900, runtime.snapshot().transitionStartedAtMs);
+  TEST_ASSERT_NOT_EQUAL(resetPrngState, runtime.auroraPrngStateForTest());
+}
+
+void test_runtime_32_power_transitions_override_reset_mode() {
+  AuroraRuntime runtime;
+  runtime.reset(32);
+  reconcileRuntimeToRunning(runtime);
+
+  AuroraInputFrame input = inputFrame(true, true);
+  input.resetButton = SignalState::Rising;
+  runtime.step(input, 100);
+  assertTransition(runtime, TransitionEffect::Reset);
+
+  input.resetButton = SignalState::High;
+  input.powerButton = SignalState::Rising;
+  runtime.step(input, 200);
+  assertTransition(runtime, TransitionEffect::Reset);
+
+  input.resetButton = SignalState::Rising;
+  input.powerButton = SignalState::High;
+  runtime.step(input, 300);
+  assertTransition(runtime, TransitionEffect::Reset);
+
+  input.resetButton = SignalState::High;
+  runtime.step(input, 200 + Config::ForcedShutdownDelayMs);
+  assertTransition(runtime, TransitionEffect::ForcedShutdown);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(TransitionEffect::Reset),
+                          static_cast<uint8_t>(
+                              runtime.snapshot().previousTransition));
+  TEST_ASSERT_EQUAL_UINT32(200 + Config::ForcedShutdownDelayMs,
+                           runtime.snapshot().transitionStartedAtMs);
+
+  input.powerButton = SignalState::Falling;
+  runtime.step(input, 800);
+  assertTransition(runtime, TransitionEffect::Shutdown);
+
+  input.powerButton = SignalState::Low;
+  runtime.step(input, 800 + Config::ShutdownDurationMs);
+  assertAnimation(runtime, AnimationMode::Off);
+  assertTransition(runtime, TransitionEffect::None);
+}
+
+void test_runtime_33_shutdown_wave_fades_behind_its_front() {
+  AuroraRuntime runtime;
+  runtime.reset(0x51A7D0A1UL);
+  AuroraInputFrame input = inputFrame(true, true);
+  runtime.step(input, 0);
+  for (uint32_t nowMs = Config::FrameIntervalMs; nowMs <= 1200;
+       nowMs += Config::FrameIntervalMs) {
+    runtime.step(input, nowMs);
+  }
+
+  Aurora::Rgb8 ambientFrame[Aurora::LedCount];
+  for (uint8_t index = 0; index < Aurora::LedCount; ++index) {
+    ambientFrame[index] = runtime.ledFrame()[index];
+  }
+
+  input.powerButton = SignalState::Rising;
+  runtime.step(input, 1220);
+  input.powerButton = SignalState::Falling;
+  runtime.step(input, 1240);
+
+  const uint8_t origin = static_cast<uint8_t>(
+      Config::ShutdownOriginMin +
+      (((1240U >> 2) % (Config::ShutdownOriginMax -
+                        Config::ShutdownOriginMin + 1U))));
+  const uint8_t farthest =
+      origin > Aurora::LedCount - 1U - origin ? 0 : Aurora::LedCount - 1U;
+  TEST_ASSERT_TRUE(runtime.ledFrame()[origin] == Config::ShutdownColor);
+  TEST_ASSERT_TRUE(runtime.ledFrame()[farthest] == ambientFrame[farthest]);
+
+  input.powerButton = SignalState::Low;
+  const uint32_t originFadeMs =
+      ((static_cast<uint32_t>(UINT8_MAX -
+                             Config::ShutdownWaveTravelEndProgress) *
+        Config::ShutdownDurationMs) +
+       UINT8_MAX - 1U) /
+      UINT8_MAX;
+  runtime.step(input, 1240 + originFadeMs);
+  TEST_ASSERT_TRUE(runtime.ledFrame()[origin] == Aurora::Rgb8{});
+  TEST_ASSERT_TRUE(runtime.ledFrame()[farthest] == ambientFrame[farthest]);
+
+  runtime.step(input, 1240 + Config::ShutdownDurationMs);
+  assertAnimation(runtime, AnimationMode::Off);
+  for (uint8_t index = 0; index < Aurora::LedCount; ++index) {
+    TEST_ASSERT_TRUE(runtime.ledFrame()[index] == Aurora::Rgb8{});
+  }
 }
 
 }  // namespace
@@ -641,26 +733,24 @@ void runRuntimeTests() {
   RUN_TEST(test_runtime_09_forced_shutdown_latches_before_release);
   RUN_TEST(test_runtime_10_reset_transition_keeps_running_persistent_state);
   RUN_TEST(test_runtime_11_await_shutdown_reaches_off_after_power_filter);
-  RUN_TEST(test_runtime_12_await_shutdown_timeout_reaches_warn);
+  RUN_TEST(test_runtime_12_await_shutdown_timeout_returns_to_running);
   RUN_TEST(test_runtime_13_same_seed_and_timeline_produce_identical_frames);
   RUN_TEST(test_runtime_14_fixed_step_aurora_matches_different_step_sizes);
   RUN_TEST(test_runtime_15_timestamp_wrap_preserves_hold_and_render_timing);
   RUN_TEST(
       test_runtime_16_strip_loss_blacks_frame_without_erasing_running_state);
-  RUN_TEST(test_runtime_17_hdd_edges_accumulate_until_core_update_tick);
+  RUN_TEST(test_runtime_17_hdd_smoothing_uses_actual_elapsed_time);
   RUN_TEST(test_runtime_18_portable_color_helpers_match_fastled_anchors);
-  RUN_TEST(test_runtime_19_default_configuration_is_valid);
-  RUN_TEST(test_runtime_20_invalid_update_intervals_are_rejected);
-  RUN_TEST(test_runtime_21_invalid_spawn_ranges_are_rejected);
-  RUN_TEST(test_runtime_22_invalid_diffusion_is_rejected);
-  RUN_TEST(test_runtime_23_invalid_renderer_configuration_is_rejected);
   RUN_TEST(
       test_runtime_24_transition_snapshot_start_completion_and_unchanged);
   RUN_TEST(
       test_runtime_25_transition_snapshot_forced_replaced_by_shutdown);
   RUN_TEST(test_runtime_26_transition_snapshot_reset_completes_to_none);
   RUN_TEST(test_runtime_27_runtime_prepares_transition_timing);
-  RUN_TEST(test_runtime_28_renderer_consumes_prepared_timing_context);
-  RUN_TEST(
-      test_runtime_29_accelerated_playback_uses_deterministic_substeps);
+  RUN_TEST(test_runtime_28_startup_reuses_field_when_ambient_begins);
+  RUN_TEST(test_runtime_29_signal_transitions_are_one_update_events);
+  RUN_TEST(test_runtime_30_reset_and_ambient_advance_one_shared_field);
+  RUN_TEST(test_runtime_31_repeated_reset_restarts_only_animation_clock);
+  RUN_TEST(test_runtime_32_power_transitions_override_reset_mode);
+  RUN_TEST(test_runtime_33_shutdown_wave_fades_behind_its_front);
 }

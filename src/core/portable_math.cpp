@@ -2,26 +2,6 @@
 
 namespace {
 
-uint8_t sin8(uint8_t theta) {
-  static constexpr uint8_t kBaseSlope[] = {0, 49, 49, 41, 90, 27, 117, 10};
-
-  uint8_t offset = theta;
-  if ((theta & 0x40U) != 0) offset = UINT8_MAX - offset;
-  offset &= 0x3FU;
-
-  uint8_t sectionOffset = offset & 0x0FU;
-  if ((theta & 0x40U) != 0) ++sectionOffset;
-  const uint8_t section = offset >> 4;
-  const uint8_t base = kBaseSlope[section * 2];
-  const uint8_t slope = kBaseSlope[section * 2 + 1];
-  const uint8_t delta =
-      static_cast<uint8_t>((static_cast<uint16_t>(slope) * sectionOffset) >>
-                           4);
-  int16_t result = static_cast<int16_t>(base) + delta;
-  if ((theta & 0x80U) != 0) result = -result;
-  return static_cast<uint8_t>(result + 128);
-}
-
 uint8_t scale8Video(uint8_t value, uint8_t scale) {
   return static_cast<uint8_t>(
       ((static_cast<uint16_t>(value) * scale) >> 8) +
@@ -31,6 +11,39 @@ uint8_t scale8Video(uint8_t value, uint8_t scale) {
 }  // namespace
 
 namespace Aurora {
+
+uint8_t sine8(uint8_t phase) {
+  static constexpr uint8_t kBaseSlope[] = {0, 49, 49, 41, 90, 27, 117, 10};
+
+  uint8_t offset = phase;
+  if ((phase & 0x40U) != 0) offset = UINT8_MAX - offset;
+  offset &= 0x3FU;
+
+  uint8_t sectionOffset = offset & 0x0FU;
+  if ((phase & 0x40U) != 0) ++sectionOffset;
+  const uint8_t section = offset >> 4;
+  const uint8_t base = kBaseSlope[section * 2];
+  const uint8_t slope = kBaseSlope[section * 2 + 1];
+  const uint8_t delta =
+      static_cast<uint8_t>((static_cast<uint16_t>(slope) * sectionOffset) >>
+                           4);
+  int16_t result = static_cast<int16_t>(base) + delta;
+  if ((phase & 0x80U) != 0) result = -result;
+  return static_cast<uint8_t>(result + 128);
+}
+
+uint8_t tri8(uint8_t phase) {
+  if ((phase & 0x80U) != 0) phase = UINT8_MAX - phase;
+  return static_cast<uint8_t>(phase << 1);
+}
+
+uint8_t hash8(uint8_t value) {
+  value ^= 0xA3U;
+  value ^= value >> 4;
+  value = static_cast<uint8_t>(value * 0x27U);
+  value ^= value >> 3;
+  return value;
+}
 
 uint8_t scale8(uint8_t value, uint8_t scale) {
   return static_cast<uint8_t>(
@@ -123,7 +136,7 @@ uint8_t periodicBrightness(uint8_t beatsPerMinute, uint8_t minimum,
   const uint16_t beat = static_cast<uint16_t>(beatProduct >> 16);
   const uint8_t phase = static_cast<uint8_t>(beat >> 8);
   const uint8_t range = static_cast<uint8_t>(maximum - minimum);
-  return static_cast<uint8_t>(minimum + scale8(sin8(phase), range));
+  return static_cast<uint8_t>(minimum + scale8(sine8(phase), range));
 }
 
 void fillRgb(Rgb8 *pixels, uint8_t count, const Rgb8 &color) {

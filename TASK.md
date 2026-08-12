@@ -1,69 +1,44 @@
-# Current task: milestone 1 — buildable firmware skeleton
+# Current task: shared-field animation modes
 
-Implement the first buildable firmware milestone described by `docs/spec.md`.
+Generalize Aurora animation control so startup, ambient, and reset evolve one
+continuous `Aurora::Field` owned by `AuroraRuntime`.
 
 ## Required deliverables
 
-1. Configure PlatformIO for Arduino Pro Mini 5 V / ATmega328P 16 MHz and FastLED.
-2. Replace the generated `src/main.cpp` example.
-3. Add small modules for:
-   - configuration and pin constants;
-   - normalized/debounced inputs;
-   - Power LED mode classification (`Off`, `On`, `Blinking`);
-   - HDD hybrid activity accumulator, 0..128;
-   - persistent PC state machine;
-   - temporary transition effect controller;
-   - LED output and strip-power safety;
-   - placeholder renderers for Aurora, startup, shutdown, reset, forced shutdown, sleep, and black/off;
-   - rate-limited serial diagnostics.
-4. Use a fixed 56-element `CRGB` buffer.
-5. Apply FastLED 5 V / 2000 mA power limiting.
-6. Run at an initial target of 50 FPS without `delay()`.
-7. Keep all hardware-active polarities configurable because the front-panel electrical interface is not finalized.
+1. Add a compact `AnimationMode` enum and a mode switch inside the portable
+   runtime update path.
+2. Move field and RGB-frame ownership into `AuroraRuntime`.
+3. Preserve the field, ignition pool, fixed-step accumulator, and PRNG across
+   every animation-mode and PC-state transition.
+4. Implement Startup as a field update that spreads, flashes, and settles into
+   Ambient without clearing the field.
+5. Implement Reset as a red wave that modifies the same field and returns to
+   Ambient without clearing it.
+6. Keep persistent `PcState` separate from temporary visual transitions.
+7. Keep `TransitionEffect` and transition timing available in
+   `AuroraSnapshot` for AVR and simulator diagnostics.
+8. Remove the standalone effect controller and renderer-owned field lifecycle.
 
-## Suggested source layout
+## Constraints
 
-```text
-src/
-  main.cpp
-  config.h
-  inputs.h
-  inputs.cpp
-  power_led_tracker.h
-  power_led_tracker.cpp
-  hdd_activity.h
-  hdd_activity.cpp
-  pc_state.h
-  pc_state.cpp
-  effect_controller.h
-  effect_controller.cpp
-  led_output.h
-  led_output.cpp
-  serial_debug.h
-  serial_debug.cpp
-  effects/
-    effects.h
-    effects.cpp
-```
-
-A smaller layout is acceptable when it remains clear and testable on AVR.
-
-## Milestone boundaries
-
-This milestone is about architecture and verified compilation, not polished visuals.
-
-Placeholder effects must visibly differ and be non-blocking, but detailed Aurora tuning belongs to the next milestone.
-
-Do not add EEPROM persistence, PC-side communication, temperature sensors, or automatic pin polarity detection.
+- Only `AuroraRuntime::reset()` may call `Aurora::Field::reset()`.
+- Keep a single `Aurora::Field` and one fixed 56-element RGB frame.
+- Do not allocate a transition frame or per-mode field.
+- Preserve raw strip-power DATA-pin safety in the AVR layer.
+- Use wraparound-safe `uint32_t` time arithmetic and no blocking calls.
+- Keep dynamic allocation, RTTI, exceptions, virtual interfaces, and Arduino
+  `String` out of the portable core.
 
 ## Acceptance criteria
 
-- `pio run` succeeds.
-- No generated example code remains.
-- Runtime code contains no `delay()`.
-- No dynamic allocation or Arduino `String`.
-- Input polarity and pin assignments are centralized.
-- State and transition effect are modeled separately.
-- Absence of strip power prevents driving the LED data pin.
-- Serial diagnostics expose normalized inputs, PC state, transition, and HDD activity.
-- Final response reports flash and SRAM usage and identifies anything that requires hardware testing.
+- Startup completion plus Power LED confirmation still enters `Running`.
+- Reset keeps persistent state at `Running` and repeated Reset restarts only
+  the Reset animation clock.
+- Reset and Ambient advance the same field PRNG for the same seed and timeline.
+- Strip-power loss produces black output without erasing the logical state or
+  Aurora field.
+- Transition priority and forced-shutdown timing remain unchanged.
+- Native PlatformIO, CMake core, simulator-session, and AVR builds pass without
+  new warnings.
+- Final results report flash and static SRAM usage; visual tuning and electrical
+  behavior remain subject to simulator and real-hardware validation.

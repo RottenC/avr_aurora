@@ -1,7 +1,6 @@
 #include <unity.h>
 
 #include "avr/strip_power_safety.h"
-#include "config.h"
 #include "core/aurora_runtime.h"
 
 namespace {
@@ -59,13 +58,11 @@ void test_strip_power_short_raw_dropout_still_requires_confirmation() {
 }
 
 void test_strip_power_policy_fresh_render_preserves_logical_state() {
-  AuroraRuntimeConfig config = Config::runtimeConfig();
-  config.frameIntervalMs = 1000;
-  AuroraRuntime runtime(config);
+  AuroraRuntime runtime;
   runtime.reset(123, 0);
 
   AuroraInputFrame inputs;
-  inputs.powerLed = true;
+  inputs.powerLed = SignalState::High;
   inputs.stripPowerPresent = true;
   runtime.step(inputs, 0);
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PcState::Running),
@@ -77,14 +74,12 @@ void test_strip_power_policy_fresh_render_preserves_logical_state() {
   StripPowerSafetyResult result = safety.update(false, true, 30);
   runtime.step(inputs, 30);
   TEST_ASSERT_TRUE(result.safeStateRequired);
-  TEST_ASSERT_FALSE(runtime.snapshot().frameUpdated);
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(PcState::Running),
                           static_cast<uint8_t>(runtime.snapshot().pcState));
 
   result = safety.update(true, true, 31);
   runtime.step(inputs, 31);
   TEST_ASSERT_FALSE(result.outputAllowed);
-  TEST_ASSERT_FALSE(runtime.snapshot().frameUpdated);
 
   result = safety.update(true, true, 31 + kRestoreConfirmMs);
   TEST_ASSERT_TRUE(result.requestFrameUpdate);

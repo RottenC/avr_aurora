@@ -6,6 +6,9 @@
 
 namespace Aurora {
 
+uint8_t sine8(uint8_t phase);
+uint8_t tri8(uint8_t phase);
+uint8_t hash8(uint8_t value);
 uint8_t scale8(uint8_t value, uint8_t scale);
 uint8_t lerp8(uint8_t from, uint8_t to, uint8_t amount);
 Rgb8 hsvToRgb(uint8_t hue, uint8_t saturation, uint8_t value);
